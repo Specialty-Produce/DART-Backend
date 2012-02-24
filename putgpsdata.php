@@ -6,7 +6,7 @@ $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 // On various errors and failures, we'll use the status BAD update XML
 $badXML = <<< EOT
 <?xml version="1.0"?>
-<putgpsdata status="failed" errmsg="XXX">
+<putgpsdata status="failed" code="0" retry="true" errmsg="XXX">
 </putgpsdata>
 EOT;
 
@@ -22,7 +22,9 @@ dartLogging ( $currentScript, "jsondata=" . $appJSON );
 
 // appJSON
 if ($appJSON == FALSE || is_null ( $appJSON )) {
+	dartLogging ( $currentScript, "    jsondata is FALSE or NULL : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER ['HTTP_USER_AGENT'] );
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : No jsondata supplied', $badXML );
+	$badXML = preg_replace ( '/retry="true"/', 'retry="false"', $badXML );
 	echo $badXML;
 	exit ();
 }

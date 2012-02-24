@@ -64,11 +64,10 @@ try {
 	$sortVal = 1;
 	$locXML = "<ROOT>\n";
 	foreach ( $jd->deliveryjson as $entry ) {
-		if ($entry->status == 1) {
+		if ($entry->status <= 5) {
 			$locXML .= '<Rec LID="' . $entry->locationid . '" iSortID="' . $sortVal . '"/>' . "\n";
 			$sortVal ++;
-		} else
-			$locXML .= '<Rec LID="' . $entry->locationid . '" iSortID=""/>' . "\n";
+		}
 	}
 	$locXML .= "</ROOT>";
 	$result = $dbh->exec ( "uspDARTDelivery " . $userid . ", '" . $locXML . "'" );

@@ -65,10 +65,12 @@ th {
 function validate_form() {
 	var errStr = '';
 	if (document.clform.vehicle.value.split(':')[0] == '0') errStr = errStr + "\\u2022 You must select a vehicle.\\n";
+	// Strip leading zeros
+	document.clform.odometer.value = document.clform.odometer.value.replace(/^0+/, '');
 	if (chkNumeric(document.clform.odometer.value) == false) errStr = errStr + "\\u2022 Please enter a valid odometer reading.\\n";
 	if (chkNumeric(document.clform.odometer.value)) {
-		var oldodometer = document.clform.vehicle.value.split(':')[2];
-		var newodometer = document.clform.odometer.value;
+		var oldodometer = parseInt(document.clform.vehicle.value.split(':')[2]);
+		var newodometer = parseInt(document.clform.odometer.value);
 		if (newodometer < oldodometer) errStr = errStr + "\\u2022 The odometer reading you entered is less than the last recorded one in the system (" + oldodometer + ").\\n";
 	}
 	if (document.clform.testschecked.checked != true) errStr = errStr + "\\u2022 You must check that you reviewed all the test items.\\n";

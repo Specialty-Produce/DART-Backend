@@ -3,79 +3,86 @@ require('fpdf16/fpdf.php');
 
 class PDF extends FPDF {
 	// Variables
-	public $locIdx;
-	public $hdrText = array('Product Description','Order','Ship','Price',' Extension');
-	public $hdrAlign = array('L','C','C','C','C');
-	public $colWs = array();
-	public $colWspacing = array();
-	public $invHeaderText = array('Invoice #', 'Invoice Date', 'Sales Person', 'Sales Person Phone', 'Customer P.O.');
-	public $invColWs = array(1, 1, 1.5, 1.5, 1.5);
-	public $invColSpacing = 0.375;
-	public $invHeaderValues = array();
-
+	public $hdrText = array ('Product Description', 'Order', 'Ship', 'Price', ' Extension' );
+	public $hdrAlign = array ('L', 'C', 'C', 'C', 'C' );
+	public $colWs = array ();
+	public $colWspacing = array ();
+	public $invHeaderText = array ('Invoice #', 'Invoice Date', 'Sales Person', 'Sales Person Phone', 'Customer P.O.', 'Terms' );
+	public $invColWs = array (0.625, 0.875, 1.25, 1.25, 1, 0.75 );
+	public $invColSpacing = 0.45;
+	public $invHeaderValues = array ();
+	public $sigPath = DART_SIG_DIR;
+	
 	//Page header
 	function Header() {
+		global $locInfo, $invNum;
 		// Left Side Text
-		$this->SetFont('Arial','B',12);
-		$this->SetXY(0.25, 0.15);
-		$this->Cell(0, 0.2, $_SESSION['userLocs'][$this->locIdx]['locationDesc'], 0, 1);
-		$this->SetFont('Arial', '', 10);
-		$txt = $_SESSION['userLocs'][$this->locIdx]['firstName'] . " " . $_SESSION['userLocs'][$this->locIdx]['lastName'] . "\n";
-		$txt .= $_SESSION['userLocs'][$this->locIdx]['address1'] . "\n";
-		$txt .= $_SESSION['userLocs'][$this->locIdx]['city'] . ", " . $_SESSION['userLocs'][$this->locIdx]['state'];
-		$this->MultiCell(3.14, 0.15, $txt, 0, 'L');
+		$this->SetFont ( 'Arial', 'B', 12 );
+		$this->SetXY ( 0.25, 0.15 );
+		//$this->Cell ( 0, 0.2, $foobar ['userLocs'] [$this->locIdx] ['locationDesc'], 0, 1 );
+		$this->Cell ( 0, 0.2, $locInfo [$invNum] ['name'], 0, 1 );
+		$this->SetFont ( 'Arial', '', 10 );
+		$txt = $locInfo [$invNum] ['address'] . "\n";
+		$txt .= $locInfo [$invNum] ['city'] . ", " . $locInfo [$invNum] ['state'] . " " . $locInfo [$invNum] ['zip'] . "\n";
+		$txt .= formatPhone ( $locInfo [$invNum] ['phone'] );
+		$this->MultiCell ( 3.14, 0.15, $txt, 0, 'L' );
 		// Right Side Text
-		$this->SetFont('Arial','B',12);
-		$widthRt = $this->GetStringWidth("Specialty Produce") + 0.1;
-		$this->SetLeftMargin((8.5 - 0.15 - $widthRt));
-		$this->SetY(0.15);
-		$this->Cell($widthRt, 0.2, "Specialty Produce", 0, 1, 'R');
-		$this->SetFont('Arial', '', 10);
+		$this->SetFont ( 'Arial', 'B', 12 );
+		$widthRt = $this->GetStringWidth ( "Specialty Produce" ) + 0.1;
+		$this->SetLeftMargin ( (8.5 - 0.15 - $widthRt) );
+		$this->SetY ( 0.15 );
+		$this->Cell ( $widthRt, 0.2, "Specialty Produce", 0, 1, 'R' );
+		$this->SetFont ( 'Arial', '', 10 );
 		$txt = "P.O. Box 82951\n";
 		$txt .= "San Diego, CA  92138\n";
 		$txt .= "Tel 619.295.3172\n";
 		$txt .= "Fax 619.295.9541\n";
-		$this->MultiCell($widthRt, 0.15, $txt, 0, 'R');
-		$this->SetLeftMargin(0.25);
+		$this->MultiCell ( $widthRt, 0.15, $txt, 0, 'R' );
+		$this->SetLeftMargin ( 0.25 );
 		//Logo - 2.25 x 0.95 in
-		$this->Image('images/sp_logo_lg.jpg',3.125, 0.1, 2.25);
-
+		$this->Image ( 'images/sp_logo_lg.jpg', 3.125, 0.1, 2.25 );
+		
 		// Put the invoice information in the header if this is the first page
-		if ($this->PageNo() == 1) {
-			$this->SetXY(0.25, $this->GetY() + 0.2);
-			$this->SetFont('Arial','B',10);
-			for ($i = 0 ; $i < 5 ; $i++) {
-				$this->Cell($this->invColWs[$i], 0.15, $this->invHeaderText[$i], 0, 0, 'C', false);
-				if ($i < 4) $this->Cell($this->invColSpacing, 0.15, ' ', 0, 0, 'C', false);
-			}
-			$this->SetXY(0.25, $this->GetY() + 0.15);
-			$this->SetFont('Arial','',10);
-			for ($i = 0 ; $i < 5 ; $i++) {
-				$this->Cell($this->invColWs[$i], 0.15, $this->invHeaderValues[$i], 0, 0, 'C', false);
-				if ($i < 4) $this->Cell($this->invColSpacing, 0.15, ' ', 0, 0, 'C', false);
-			}
+		$this->SetXY ( 0.25, $this->GetY () + 0.2 );
+		$this->SetFont ( 'Arial', 'B', 10 );
+		for($i = 0; $i < 6; $i ++) {
+			$this->Cell ( $this->invColWs [$i], 0.15, $this->invHeaderText [$i], 0, 0, 'C', false );
+			if ($i < 5)
+				$this->Cell ( $this->invColSpacing, 0.15, ' ', 0, 0, 'C', false );
+		}
+		$this->SetXY ( 0.25, $this->GetY () + 0.2 );
+		$this->SetFont ( 'Arial', '', 10 );
+		for($i = 0; $i < 6; $i ++) {
+			$this->Cell ( $this->invColWs [$i], 0.15, $this->invHeaderValues [$i], 0, 0, 'C', false );
+			if ($i < 5)
+				$this->Cell ( $this->invColSpacing, 0.15, ' ', 0, 0, 'C', false );
 		}
 		
 		// Put the item headers in place
-		$this->SetXY(0.25, $this->GetY() + 0.2);
-		$this->SetFont('Arial','B',10);
-		for ($i = 0 ; $i < 5 ; $i++) {
-			$this->Cell($this->colWs[$i], 0.15, $this->hdrText[$i], 'TB', 0, $this->hdrAlign[$i], false);
-			if ($i < 4) $this->Cell($this->colWspacing[$i], 0.15, ' ', 'TB', 0, 'C', false);
+		$this->SetXY ( 0.25, $this->GetY () + 0.25 );
+		$this->SetFont ( 'Arial', 'B', 10 );
+		for($i = 0; $i < 5; $i ++) {
+			$this->Cell ( $this->colWs [$i], 0.15, $this->hdrText [$i], 'TB', 0, $this->hdrAlign [$i], false );
+			if ($i < 4)
+				$this->Cell ( $this->colWspacing [$i], 0.15, ' ', 'TB', 0, 'C', false );
 		}
-		$this->SetXY(0.25, $this->GetY() + 0.2);
+		$this->SetXY ( 0.25, $this->GetY () + 0.2 );
 	}
-
+	
 	//Page footer
 	function Footer() {
-		//Arial italic 8
-		$this->SetFont('Arial','I',8);
-		// Disclaimer
-		$this->SetXY(0.25, -0.4);
-		$this->Cell(7.125, 0.2, 'This reprint may not reflect all credits, adjustments or returns. Questions? Please contact our accounting department at 619.876.4070.', 0, 0, 'C');
+		// Add the company info
+		$this->SetXY ( 0.25, - 1.35 );
+		$this->SetFont ( 'Arial', 'B', 8 );
+		$infoText = "Comment Hotline 619.876.4067 or comments@specialtyproduce.com\nWe are certified to handle Organics! Our CA Organic Registration Number is 37-1293";
+		$this->MultiCell ( 8.0, 0.14, $infoText, 'T', 'C' );
+		// Add the disclaimer
+		$this->SetFont ( 'Times', 'I', 9 );
+		$disclaimer = 'The perishable commodities listed on this invoice are sold subject to the statutory trust authorized by section 5C of The Perishable Agricultural Commodities Act, 1930 (7 U.S.C. 499[E][C]).  The seller of these commodities retains a trust claim over these commodities, all inventories of food or other products derived from these commodities, and any receivables or proceeds from the sale of these commodities until full payment is received.  We reserve the right to protect our P.A.C.A. Trust Fund Benefits on past due accounts over 30 days.  This shipment is in compliance with the public law 98-273 of the P.A.C.A. Trust Provision.  PAYMENT TERMS: NET 21 DAYS.  If no signed letter of terms on file, P.A.C.A. 10 day prompt pay terms apply.  Past due invoices are subject to a FINANCE CHARGE of 1 1/2% (which is an ANNUAL PERCENTAGE RATE OF 18%).  If legal action is taken to collect a past due account, buyer agrees to pay all collection costs and/or all reasonable attorney fees.  ALL CLAIMS MUST BE REPORTED WITHIN 24 HOURS.';
+		$this->MultiCell ( 8.0, 0.12, $disclaimer, 'T', 'C' );
 		//Page number
-		$this->SetXY(0.25, -0.4);
-		$this->Cell(8.0, 0.2, 'Page '.$this->PageNo().'/{nb}', 0, 0, 'R');
+		$this->SetFont ( 'Arial', 'B', 9 );
+		$this->Cell ( 0, 0.2, 'Page ' . $this->PageNo () . '/{nb}', 'T', 0, 'C' );
 	}
 }
 
