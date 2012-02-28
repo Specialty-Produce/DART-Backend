@@ -179,11 +179,15 @@ if (count ( $sendEmails ) > 0) {
 	$mail->Body = <<< EOT
 Dear Customer, 
 
+Remember, you can always view your invoice history and proof of delivery by logging into your account at www.specialtyproduce.com.
+
 Your invoice is attached. Please make check payable to Specialty Produce and mail it to:
 P.O. Box 82951, San Diego, CA 92138
 
 Refer to attached invoice for your payment terms. Payment is due in our office by your payment term.
 Should you have any questions, please contact accounting department at AR@SPECIALTYPRODUCE.COM or (619) 876-4070.
+
+Please disregard this email if you have already remit the payment.
 
 We appreciate your business.
 
