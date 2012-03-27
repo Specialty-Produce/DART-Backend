@@ -171,6 +171,15 @@ try {
 		$result = $stmt->fetch ( PDO::FETCH_ASSOC );
 		$signerID = $result ['iUserID'];
 		$stmt->closeCursor ();
+		
+		/*
+		$stmt = $dbh->prepare ("uspDARTAddSigner 0, $locationID, ?, ?, ?, 1, ?");
+		$asFname = trim ( $jd->deliveryjson->delivery->signerinfo->fname );
+		$asLname = trim ( $jd->deliveryjson->delivery->signerinfo->lname );
+		$asEmail = trim ( $jd->deliveryjson->delivery->signerinfo->email );
+		$asPhone = formatPhone ( trim ( $jd->deliveryjson->delivery->signerinfo->phone ) );
+		$stmt->execute;
+		*/
 	}
 	
 	// Get the last update time according to the database

@@ -40,14 +40,16 @@ th {
 <script type="text/javascript">
 var oldodometer = 1000;
 function setoldodometer(odovalue) {
-	oldodometer = odovalue;
+	oldodometer = parseInt(odovalue);
 	return 'success';
 }
 function validate_form() {
 	var errStr = '';
 	if (chkNumeric(document.clform.odometer.value) == false) errStr = errStr + "\\u2022 Please enter a valid odometer reading.\\n";
+	// Strip leading zeros
+	document.clform.odometer.value = document.clform.odometer.value.replace(/^0+/, '');
 	if (chkNumeric(document.clform.odometer.value)) {
-		var newodometer = document.clform.odometer.value;
+		var newodometer = parseInt(document.clform.odometer.value);
 		if (newodometer < oldodometer) errStr = errStr + "\\u2022 The odometer reading you entered is less than the one you entered on the Start Checklist (" + oldodometer + ").\\n";
 		if ((newodometer-oldodometer) > 999) errStr = errStr + "\\u2022 The odometer reading you entered is 1000 miles or more than the one you entered on the Start Checklist (" + oldodometer + ").\\n";
 	}

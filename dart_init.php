@@ -2,6 +2,7 @@
 define ( "DEBUG_USERID", 12658 );
 define ( "PRINTED_INVOICE_ID", 13358 );
 define ( "DARK_STOP_ID", 17862 );
+define ( "DONT_SEND_INVOICE_EMAIL", "dontsendinvoices@specialtyproduce.com");
 define ( "DART_ERROR_LOG", "dart_errors" );
 define ( "DART_REPORTING", "dart_reporting" );
 define ( "DART_LOG_DIR", "C:/inetpub/wwwroot/Dart/logs/" );

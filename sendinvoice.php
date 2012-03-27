@@ -23,9 +23,10 @@ try {
 	// Get the info
 	$stmt = $dbh->query ( "uspDARTSendInvoiceInfo '" . $invXML . "'" );
 	foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
+		$shipDate = date ( 'n/j/Y', strtotime ( $row ['dtShip'] ) );
 		$deliveryDate = date ( 'n/j/Y g:i:s A', strtotime ( $row ['dtDartDelivered'] ) );
 		$isDarkStop = ($row ['iSigner'] == DARK_STOP_ID) ? true : false;
-		$locInfo [$row ['iSaleID']] = array ('id' => $row ['iLocationDestinationID'], 'saleID' => $row ['iSaleID'], 'name' => $row ['sDescription'], 'address' => $row ['sAddress1'], 'city' => $row ['sCity'], 'state' => $row ['sState'], 'zip' => $row ['sPostalCode'], 'phone' => $row ['sPhone'], 'salesperson' => $row ['txtSalesPerson'], 'salesphone' => $row ['txtCellPhone'], 'salesemail' => $row ['txtSalesEmail'], 'terms' => $row ['sTerms'], 'po' => $row ['sPO'], 'darkstop' => $isDarkStop, 'signer' => $row ['txtSigner'], 'deldate' => $deliveryDate, 'greenYTD' => $row ['mYTD'] );
+		$locInfo [$row ['iSaleID']] = array ('id' => $row ['iLocationDestinationID'], 'saleID' => $row ['iSaleID'], 'name' => $row ['sDescription'], 'address' => $row ['sAddress1'], 'city' => $row ['sCity'], 'state' => $row ['sState'], 'zip' => $row ['sPostalCode'], 'phone' => $row ['sPhone'], 'salesperson' => $row ['txtSalesPerson'], 'salesphone' => $row ['txtCellPhone'], 'salesemail' => $row ['txtSalesEmail'], 'terms' => $row ['sTerms'], 'po' => $row ['sPO'], 'darkstop' => $isDarkStop, 'signer' => $row ['txtSigner'], 'shipdate' => $shipDate, 'deldate' => $deliveryDate, 'greenYTD' => $row ['mYTD'] );
 	}
 	$stmt->closeCursor ();
 	
@@ -102,7 +103,7 @@ for($i = 1; $i < count ( $argv ); $i ++) {
 	
 	$pdf = new invoicePDF ();
 	$pdf->setLocation ( $locInfo [$invNum] ['name'], $locInfo [$invNum] ['address'], $locInfo [$invNum] ['city'], $locInfo [$invNum] ['state'], $locInfo [$invNum] ['zip'], formatPhone ( $locInfo [$invNum] ['phone'] ) );
-	$pdf->setInvoiceHeader ( $invNum, $locInfo [$invNum] ['deldate'], $locInfo [$invNum] ['salesperson'], formatPhone ( $locInfo [$invNum] ['salesphone'] ), $locInfo [$invNum] ['po'], $locInfo [$invNum] ['terms'] );
+	$pdf->setInvoiceHeader ( $invNum, $locInfo [$invNum] ['shipdate'], $locInfo [$invNum] ['salesperson'], formatPhone ( $locInfo [$invNum] ['salesphone'] ), $locInfo [$invNum] ['po'], $locInfo [$invNum] ['terms'] );
 	$pdf->startInvoice ();
 	// Item List
 	foreach ( $lineItems as $line ) {
@@ -200,14 +201,18 @@ EOT;
 	$badEmails = array ();
 	foreach ( $sendEmails as $entry ) {
 		if (strlen ( $entry ['email'] ) > 0) {
-			$mail->AddAddress ( $entry ['email'], $entry ['name'] );
 			fwrite ( $fp, " " . $entry ['email'] );
-			if (! $mail->Send ()) {
-				$badEmails [] = $entry ['email'];
-			} else {
+			if ($entry ['email'] == DONT_SEND_INVOICE_EMAIL) {
 				$sendCount ++;
+			} else {
+				$mail->AddAddress ( $entry ['email'], $entry ['name'] );
+				if (! $mail->Send ()) {
+					$badEmails [] = $entry ['email'];
+				} else {
+					$sendCount ++;
+				}
+				$mail->ClearAddresses ();
 			}
-			$mail->ClearAddresses ();
 		}
 	}
 	$mail->ClearAttachments ();
@@ -230,6 +235,7 @@ if (count ( $sendFaxes ) > 0) {
 		$response = shell_exec ( $cmd );
 		copy ( $outputTiffFileName, DART_FAX_DIR . $invoice ['saleID'] . ".tiff" );
 		sleep ( 3 );
+		unlink ( $outputTiffFileName );
 	}
 	$invXML .= "</ROOT>";
 	try {
@@ -254,13 +260,12 @@ if (count ( $sendFaxes ) > 0) {
 	}
 }
 
-// If we sent the invoices out at least once, delete the PDFs
-if ($sendCount > 0) {
-	foreach ( array_keys ( $locInfo ) as $invoice ) {
-		$outFile = DART_PDF_DIR . $invNum . ".pdf";
-	
-	// unlink ( $outFile );
-	}
+// Remove the PDFs
+sleep ( 5 );
+foreach ( array_keys ( $locInfo ) as $invNum ) {
+	$outFile = DART_PDF_DIR . $invNum . ".pdf";
+	unlink ( $outFile );
 }
+
 exit ( 0 );
 ?>

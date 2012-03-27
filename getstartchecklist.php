@@ -95,7 +95,8 @@ function encode_form() {
 	evStr += "],";
 
 	// Test comments
-	evStr += "'comments':'" + encodeURIComponent(document.clform.comments.value) + "'}";
+	// evStr += "'comments':'" + encodeURIComponent(document.clform.comments.value) + "'}";
+	evStr += "'comments':''}";
         
     eval(evStr);
     var encStr = JSON.stringify(encData);

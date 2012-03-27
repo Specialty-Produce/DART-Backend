@@ -78,6 +78,7 @@ foreach ( $driverList as $entry ) {
 	$resultStr .= '<entry id="' . $entry['iUserID'] . '">' . mb_convert_encoding ( $entry['txtFirstName'], "UTF-8", "Windows-1252" ) . " " . mb_convert_encoding ( $entry['txtLastName'], "UTF-8", "Windows-1252" ) . "</entry>\n";
 }
 $resultStr .= "</driver_entry_list>\n";
+$resultStr .= "<webservicefilesavedays>5</webservicefilesavedays>\n";
 $resultStr .= "</staticinfo>";
 echo $resultStr;
 exit();

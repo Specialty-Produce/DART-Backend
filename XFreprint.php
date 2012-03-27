@@ -31,8 +31,9 @@ if ($invType == 'd') {
 		$invXML .= "</ROOT>\n";
 		$stmt = $dbh->query ( "uspDARTSendInvoiceInfo '" . $invXML . "'" );
 		foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
+			$shipDate = date('n/j/Y', strtotime($row['dtShip']));
 			$deliveryDate = date ( 'n/j/Y g:i:s A', strtotime ( $row ['dtDartDelivered'] ) );
-			$locInfo [$row ['iSaleID']] = array ('id' => $row ['iLocationDestinationID'], 'saleID' => $row ['iSaleID'], 'name' => $row ['sDescription'], 'address' => $row ['sAddress1'], 'city' => $row ['sCity'], 'state' => $row ['sState'], 'zip' => $row ['sPostalCode'], 'phone' => $row ['sPhone'], 'salesperson' => $row ['txtSalesPerson'], 'salesphone' => $row ['txtCellPhone'], 'salesemail' => $row ['txtSalesEmail'], 'terms' => $row ['sTerms'], 'po' => $row ['sPO'], 'signer' => $row ['txtSigner'], 'deldate' => $deliveryDate, 'greenYTD' => $row ['mYTD'] );
+			$locInfo [$row ['iSaleID']] = array ('id' => $row ['iLocationDestinationID'], 'saleID' => $row ['iSaleID'], 'name' => $row ['sDescription'], 'address' => $row ['sAddress1'], 'city' => $row ['sCity'], 'state' => $row ['sState'], 'zip' => $row ['sPostalCode'], 'phone' => $row ['sPhone'], 'salesperson' => $row ['txtSalesPerson'], 'salesphone' => $row ['txtCellPhone'], 'salesemail' => $row ['txtSalesEmail'], 'terms' => $row ['sTerms'], 'po' => $row ['sPO'], 'signer' => $row ['txtSigner'], 'shipdate'=>$shipDate, 'deldate' => $deliveryDate, 'greenYTD' => $row ['mYTD'] );
 		}
 		$stmt->closeCursor ();
 		
@@ -79,7 +80,7 @@ if ($invType == 'd') {
 	// Generate the PDF
 	$pdf = new invoicePDF ();
 	$pdf->setLocation ( $locInfo [$invNum] ['name'], $locInfo [$invNum] ['address'], $locInfo [$invNum] ['city'], $locInfo [$invNum] ['state'], $locInfo [$invNum] ['zip'], formatPhone ( $locInfo [$invNum] ['phone'] ) );
-	$pdf->setInvoiceHeader ( $invNum, $locInfo [$invNum] ['deldate'], $locInfo [$invNum] ['salesperson'], formatPhone ( $locInfo [$invNum] ['salesphone'] ), $locInfo [$invNum] ['po'], $locInfo [$invNum] ['terms'] );
+	$pdf->setInvoiceHeader ( $invNum, $locInfo [$invNum] ['shipdate'], $locInfo [$invNum] ['salesperson'], formatPhone ( $locInfo [$invNum] ['salesphone'] ), $locInfo [$invNum] ['po'], $locInfo [$invNum] ['terms'] );
 	$pdf->startInvoice ();
 	// Item List
 	foreach ( $lineItems as $line ) {
