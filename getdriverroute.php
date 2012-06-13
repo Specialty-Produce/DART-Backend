@@ -92,6 +92,7 @@ foreach ( $routeInfo as $entry ) {
 			'phone' => mb_convert_encoding ( $entry ['sPhone'], "UTF-8", "Windows-1252" ), 
 			'deliverytime' => $entry ['sTime'],
 			'requirespaper' => $entry ['iInvoiceException'],
+			'allowdarkdrop' => ($entry['iNDS'] == 0) ? 'true' : 'false',
 			'locnotes' => mb_convert_encoding ( $entry ['txtLocationNotes'], "UTF-8", "Windows-1252" ),
 			'salesname' => mb_convert_encoding ( $entry ['txtSalesPerson'], "UTF-8", "Windows-1252" ),
 			'salesemail' => mb_convert_encoding ( $entry ['txtEmail'], "UTF-8", "Windows-1252" ),
@@ -122,7 +123,7 @@ $resultStr .= '
 $sortCount = 1;
 foreach ( $locationList as $locID ) {
 	$requiresPaper = ($location [$locID] ['requirespaper'] == - 1) ? "true" : "false";
-	$resultStr .= '<location id="' . $locID . '" sort="' . $sortCount . '" lastupdate="' . $location [$locID] ['lastupdate'] . '" requirespaper="' . $requiresPaper . '">' . "\n";
+	$resultStr .= '<location id="' . $locID . '" sort="' . $sortCount . '" lastupdate="' . $location [$locID] ['lastupdate'] . '" requirespaper="' . $requiresPaper . '" allowdarkdrop="' . $location [$locID] ['allowdarkdrop'] . '">' . "\n";
 	$sortCount ++;
 	$resultStr .= "<name>" . $location [$locID] ['name'] . "</name>\n";
 	$resultStr .= "<street>" . $location [$locID] ['street'] . "</street>\n";

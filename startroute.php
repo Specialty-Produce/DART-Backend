@@ -6,7 +6,7 @@ $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 // On various errors and failures, we'll use the status BAD update XML
 $badXML = <<< EOT
 <?xml version="1.0"?>
-<startroute status="failed" errmsg="XXX">
+<startroute status="failed" code="0" retry="true" errmsg="XXX">
 </startroute>
 EOT;
 

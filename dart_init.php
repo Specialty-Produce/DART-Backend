@@ -1,16 +1,32 @@
 <?php
+// Hard-coded UserIDs
 define ( "DEBUG_USERID", 12658 );
 define ( "PRINTED_INVOICE_ID", 13358 );
 define ( "DARK_STOP_ID", 17862 );
-define ( "DONT_SEND_INVOICE_EMAIL", "dontsendinvoices@specialtyproduce.com");
+
+// Logging
 define ( "DART_ERROR_LOG", "dart_errors" );
 define ( "DART_REPORTING", "dart_reporting" );
 define ( "DART_LOG_DIR", "C:/inetpub/wwwroot/Dart/logs/" );
+
+// Invoice-related
 define ( "DART_PDF_DIR", "C:/Temp/invoicePDFs/" );
 define ( "DART_SIG_DIR", "\\\\vServices\\dartsigs\$\\" );
 define ( "DART_FAX_DIR", "\\\\Server3\\DartFaxes\$\\" );
+
 // For use by the XFresh invoice retrieval
 define ( "SCAN_INVOICE_DIR", "\\\\vServices\\invoices\$\\" );
+
+// Kludge to have users never get invoices
+define ( "DONT_SEND_INVOICE_EMAIL", "dontsendinvoices@specialtyproduce.com");
+
+// SQL error-trapping
+define ("DART_SQL_TIMEOUT_SLEEP", 3);
+define ("DART_SQL_TIMEOUT_MAX_TRIES", 3);
+
+// Error Codes
+define ("DART_ERR_NONE", 0);
+define ("DART_ERR_SQL_DB_TIMEOUT", 1);
 
 function dartLogging($webservice, $data, $code = '') {
 	$filename = DART_LOG_DIR . $webservice . ".log";

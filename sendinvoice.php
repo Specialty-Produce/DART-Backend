@@ -61,7 +61,7 @@ for($i = 1; $i < count ( $argv ); $i ++) {
 		// set the error reporting attribute.
 		$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
 		
-		// Get the contents of this catalog, and update the prodList, if needed.
+		// Get the line items of the invoice.
 		$sql = "uspWebXFInvoiceDetail " . $invNum;
 		$stmt = $dbh->query ( $sql );
 		$greenDiscount = 0.0;

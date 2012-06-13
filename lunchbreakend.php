@@ -6,7 +6,7 @@ $currentScript = basename($_SERVER["SCRIPT_NAME"]);
 // On various errors and failures, we'll use the status BAD update XML
 $badXML = <<< EOT
 <?xml version="1.0"?>
-<lunchend status="failed" errmsg="XXX">
+<lunchend status="failed" code="0" retry="true" errmsg="XXX">
 </lunchend>
 EOT;
 
@@ -40,7 +40,7 @@ try {
 	$dbh = new PDO ( 'spdb', '', '' );
 	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
 	
-	$sql = "uspDARTBreakTime $userid, '" . $endtime . ".000', 2, '" . $comment . "'";
+	$sql = "uspDARTBreakTime $userid, '" . $endtime . ".000', 2, '" . $comment . "', 0";
 	$result = $dbh->exec($sql);
 	
 	$dbh = null;

@@ -8,7 +8,7 @@ global $pullColors;
 // On various errors and failures, we'll use the status BAD update XML
 $badXML = <<< EOT
 <?xml version="1.0"?>
-<pullreport_item_list status="failed" errmsg="XXX">
+<pullreport_item_list status="failed" code="0" retry="true" errmsg="XXX">
 </pullreport_item_list>
 EOT;
 

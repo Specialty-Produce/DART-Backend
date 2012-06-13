@@ -49,7 +49,6 @@ if (! preg_match ( '/,"userid":"\d+"}$/', $appJSON )) {
 
 // TODO CRC check
 
-
 // Good to go...
 $jd = json_decode ( $appJSON );
 
@@ -115,6 +114,18 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 	}
 }
 
+// DEBUG sql timeout
+/*
+if (rand ( 1, 2 ) == 1) {
+	sleep ( DART_SQL_TIMEOUT_MAX_TRIES * DART_SQL_TIMEOUT_SLEEP );
+	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database timeout, see ' . DART_ERROR_LOG . ' log', $badXML );
+	$badXML = preg_replace ( '/code="0"/', 'code="' . DART_ERR_SQL_DB_TIMEOUT . '"', $badXML );
+	echo $badXML;
+	exit ();
+}
+*/
+
+// Done if the DEBUG user
 if ($jd->userid == DEBUG_USERID) {
 	echo $successXML;
 	exit ();
@@ -124,115 +135,126 @@ if ($jd->userid == DEBUG_USERID) {
 $updateCode = 2;
 $invXML = '';
 $result = false;
-try {
-	$dbh = new PDO ( 'spdb', '', '' );
-	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-	
-	// Prep for the XML version of invoice list for the stored procedure
-	$invXML = "<ROOT>\n";
-	foreach ( $jd->deliveryjson->invoice_list as $invoice )
-		$invXML .= '<Rec rID="' . $invoice->saleid . '" dtDelTime="' . $invoice->signtimestamp . '.000"/>' . "\n";
-	$invXML .= "</ROOT>";
-	
-	// Check if this is a repeat call to deliverycomplete.php
-	$repeatCall = false;
-	$stmt = $dbh->query ( "uspDARTCheckDeliveryDate '" . $invXML . "'" );
-	foreach ( $stmt->fetchAll ( PDO::FETCH_BOTH ) as $row ) {
-		if ($row ['dtDartDelivered'] != '') {
-			$repeatCall = true;
-		}
-	}
-	$stmt->closeCursor ();
-	if ($repeatCall) {
-		dartLogging ( $currentScript, "  Repeat Call : " . $_SERVER ['REMOTE_ADDR'] . " : " . $_SERVER ['HTTP_USER_AGENT'], $codeStr );
-		$dbh = null;
-		echo $successXML;
-		exit ();
-	}
-	
-	// Check if this is a DART driver for later use by "sendinvoice"
-	$stmt = $dbh->query ( "uspDARTCheckDriverIsDart " . $jd->userid );
-	$driverCheck = $stmt->fetchAll ( PDO::FETCH_BOTH );
-	$stmt->closeCursor ();
-	$dartDriver = ($driverCheck [0] ['iStatus'] == 1) ? true : false;
-	
-	// First check to see if there is a signer
-	if ($signerID == 0) {
-		// Add the signer
-		$sql = "uspDARTAddSigner 0, $locationID, '" . preg_replace ( '/\'+/', '\'\'', trim ( $jd->deliveryjson->delivery->signerinfo->fname ) ) . "', ";
-		$sql .= "'" . preg_replace ( '/\'+/', '\'\'', trim ( $jd->deliveryjson->delivery->signerinfo->lname ) ) . "', ";
-		$sigEmail = trim ( $jd->deliveryjson->delivery->signerinfo->email );
-		$sql .= ($sigEmail == '') ? 'null' : "'" . $sigEmail . "'";
-		$sql .= ", 1, ";
-		$sigPhone = formatPhone ( trim ( $jd->deliveryjson->delivery->signerinfo->phone ) );
-		$sql .= ($sigPhone == '') ? 'null' : "'" . $sigPhone . "'";
-		dartLogging ( $currentScript, "    uspDARTAddSigner sql=" . $sql, $codeStr );
-		$stmt = $dbh->query ( $sql );
-		$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-		$signerID = $result ['iUserID'];
-		$stmt->closeCursor ();
+$sqlFailed = true;
+$sqlAttemptCount = 1;
+$sql = '';
+while ( $sqlFailed ) {
+	$sqlFailed = false;
+	try {
+		$dbh = new PDO ( 'spdb', '', '' );
+		$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
 		
-		/*
-		$stmt = $dbh->prepare ("uspDARTAddSigner 0, $locationID, ?, ?, ?, 1, ?");
-		$asFname = trim ( $jd->deliveryjson->delivery->signerinfo->fname );
-		$asLname = trim ( $jd->deliveryjson->delivery->signerinfo->lname );
-		$asEmail = trim ( $jd->deliveryjson->delivery->signerinfo->email );
-		$asPhone = formatPhone ( trim ( $jd->deliveryjson->delivery->signerinfo->phone ) );
-		$stmt->execute;
-		*/
-	}
-	
-	// Get the last update time according to the database
-	$invTimesDB = array ();
-	$stmt = $dbh->query ( "uspDARTCheckLastUpdate '" . $invXML . "'" );
-	foreach ( $stmt->fetchAll ( PDO::FETCH_BOTH ) as $row ) {
-		$lastUpdate = preg_replace ( '/(.*):\d{2}\.\d{3}$/', '$1', $row ['dtDartLastUpdated'] );
-		$invTimesDB [$row ['iSaleID']] = $lastUpdate;
-	}
-	$stmt->closeCursor ();
-	
-	// Now mark the invoice as "delivered"
-	$resultDelivered = $dbh->exec ( "uspDARTDelivered $updateCode, $signerID, '" . $invXML . "'" );
-	
-	// We need to build the list of invoices that have lastupdatetime values different between database and ipad
-	$updateAtDeliveryFailXML = '';
-	$saleDetailXML = '';
-	foreach ( $jd->deliveryjson->invoice_list as $invoice ) {
-		$getAllLines = false;
-		if ($invoice->lastupdatetime != $invTimesDB [$invoice->saleid]) {
-			$getAllLines = true;
-			$updateAtDeliveryFailXML .= '<Rec rID="' . $invoice->saleid . '"/>' . "\n";
-		}
-		foreach ( $invoice->invoice_item_list as $line ) {
-			if ($line->edited == "true" || $getAllLines == true) {
-				$saleDetailXML .= '<Rec rID="' . $line->lineid . '" iUnitID="' . $line->finalunitid . '" fQty="' . $line->finalqship . '" mUnitPrice="' . $line->finalunitprice . '" iStatus= "' . '' . '"/>' . "\n";
+		// Prep for the XML version of invoice list for the stored procedure
+		$invXML = "<ROOT>\n";
+		foreach ( $jd->deliveryjson->invoice_list as $invoice )
+			$invXML .= '<Rec rID="' . $invoice->saleid . '" dtDelTime="' . $invoice->signtimestamp . '.000"/>' . "\n";
+		$invXML .= "</ROOT>";
+		
+		// Check if this is a repeat call to deliverycomplete.php
+		$repeatCall = false;
+		$sql = "uspDARTCheckDeliveryDate '" . $invXML . "'";
+		$stmt = $dbh->query ( $sql );
+		foreach ( $stmt->fetchAll ( PDO::FETCH_BOTH ) as $row ) {
+			if ($row ['dtDartDelivered'] != '') {
+				$repeatCall = true;
 			}
 		}
+		$stmt->closeCursor ();
+		if ($repeatCall) {
+			dartLogging ( $currentScript, "  Repeat Call : " . $_SERVER ['REMOTE_ADDR'] . " : " . $_SERVER ['HTTP_USER_AGENT'], $codeStr );
+			$dbh = null;
+			echo $successXML;
+			exit ();
+		}
+		
+		// First check to see if there is a signer
+		if ($signerID == 0) {
+			// Add the signer
+			$sql = "uspDARTAddSigner 0, $locationID, '" . preg_replace ( '/\'+/', '\'\'', trim ( $jd->deliveryjson->delivery->signerinfo->fname ) ) . "', ";
+			$sql .= "'" . preg_replace ( '/\'+/', '\'\'', trim ( $jd->deliveryjson->delivery->signerinfo->lname ) ) . "', ";
+			$sigEmail = trim ( $jd->deliveryjson->delivery->signerinfo->email );
+			$sql .= ($sigEmail == '') ? 'null' : "'" . $sigEmail . "'";
+			$sql .= ", 1, ";
+			$sigPhone = formatPhone ( trim ( $jd->deliveryjson->delivery->signerinfo->phone ) );
+			$sql .= ($sigPhone == '') ? 'null' : "'" . $sigPhone . "'";
+			dartLogging ( $currentScript, "    uspDARTAddSigner sql=" . $sql, $codeStr );
+			$stmt = $dbh->query ( $sql );
+			$result = $stmt->fetch ( PDO::FETCH_ASSOC );
+			$signerID = $result ['iUserID'];
+			$stmt->closeCursor ();
+		}
+		
+		// Get the last update time according to the database
+		$invTimesDB = array ();
+		$sql = "uspDARTCheckLastUpdate '" . $invXML . "'";
+		$stmt = $dbh->query ( $sql );
+		foreach ( $stmt->fetchAll ( PDO::FETCH_BOTH ) as $row ) {
+			$lastUpdate = preg_replace ( '/(.*):\d{2}\.\d{3}$/', '$1', $row ['dtDartLastUpdated'] );
+			$invTimesDB [$row ['iSaleID']] = $lastUpdate;
+		}
+		$stmt->closeCursor ();
+		
+		// Now mark the invoice as "delivered"
+		$sql = "uspDARTDelivered $updateCode, $signerID, '" . $invXML . "'";
+		$resultDelivered = $dbh->exec ( $sql );
+		
+		// We need to build the list of invoices that have lastupdatetime values different between database and ipad
+		$updateAtDeliveryFailXML = '';
+		$saleDetailXML = '';
+		foreach ( $jd->deliveryjson->invoice_list as $invoice ) {
+			$getAllLines = false;
+			if ($invoice->lastupdatetime != $invTimesDB [$invoice->saleid]) {
+				$getAllLines = true;
+				$updateAtDeliveryFailXML .= '<Rec rID="' . $invoice->saleid . '"/>' . "\n";
+			}
+			foreach ( $invoice->invoice_item_list as $line ) {
+				if ($line->edited == "true" || $getAllLines == true) {
+					$saleDetailXML .= '<Rec rID="' . $line->lineid . '" iUnitID="' . $line->finalunitid . '" fQty="' . $line->finalqship . '" mUnitPrice="' . $line->finalunitprice . '" iStatus= "' . '' . '"/>' . "\n";
+				}
+			}
+		}
+		
+		// Now call the stored procedures, as needed, if my XML strings are not empty
+		$resultUpdateChanges = true;
+		if ($saleDetailXML != '') {
+			$saleDetailXML = "<ROOT>\n" . $saleDetailXML . "</ROOT>";
+			dartLogging ( $currentScript, "    saleDetailXML=" . $saleDetailXML, $codeStr );
+			$sql = "uspDARTDeliveryCompleteUpdates '" . $saleDetailXML . "'";
+			$resultUpdateChanges = $dbh->exec ( $sql );
+		}
+		$resultDeliveryFail = true;
+		if ($updateAtDeliveryFailXML != '') {
+			$updateAtDeliveryFailXML = "<ROOT>\n" . $updateAtDeliveryFailXML . "</ROOT>";
+			dartLogging ( $currentScript, "    updateAtDeliveryFailXML=" . $updateAtDeliveryFailXML, $codeStr );
+			$sql = "uspDARTUpdateAtDeliveryFail '" . $updateAtDeliveryFailXML . "'";
+			$resultDeliveryFail = $dbh->exec ( $sql );
+		}
+		
+		$dbh = null;
+	} catch ( PDOException $e ) {
+		$errMsg = "SQL = $sql\n";
+		$eMessage = $e->getMessage ();
+		$errMsg .= $e->getFile () . ' (' . $e->getLine () . ')' . " sqlAttemptCount=$sqlAttemptCount : " . $eMessage;
+		$errMsg .= "\ninvXML = " . $invXML;
+		SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
+		if (preg_match ( '/Timeout expired/', $eMessage ) || preg_match ( '/SQL Server does not exist or access denied/', $eMessage ) || preg_match ( '/deadlock victim/', $eMessage )) {
+			if ($sqlAttemptCount < DART_SQL_TIMEOUT_MAX_TRIES) {
+				$sqlAttemptCount ++;
+				$sqlFailed = true;
+				sleep ( DART_SQL_TIMEOUT_SLEEP );
+			} else {
+				$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database timeout, see ' . DART_ERROR_LOG . ' log', $badXML );
+				$badXML = preg_replace ( '/code="0"/', 'code="1"', $badXML );
+				echo $badXML;
+				exit ();
+			}
+		} else {
+			dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
+			$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
+			echo $badXML;
+			exit ();
+		}
 	}
-	
-	// Now call the stored procedures, as needed, if my XML strings are not empty
-	$resultUpdateChanges = true;
-	if ($saleDetailXML != '') {
-		$saleDetailXML = "<ROOT>\n" . $saleDetailXML . "</ROOT>";
-		dartLogging ( $currentScript, "    saleDetailXML=" . $saleDetailXML, $codeStr );
-		$resultUpdateChanges = $dbh->exec ( "uspDARTDeliveryCompleteUpdates '" . $saleDetailXML . "'" );
-	}
-	$resultDeliveryFail = true;
-	if ($updateAtDeliveryFailXML != '') {
-		$updateAtDeliveryFailXML = "<ROOT>\n" . $updateAtDeliveryFailXML . "</ROOT>";
-		dartLogging ( $currentScript, "    updateAtDeliveryFailXML=" . $updateAtDeliveryFailXML, $codeStr );
-		$resultDeliveryFail = $dbh->exec ( "uspDARTUpdateAtDeliveryFail '" . $updateAtDeliveryFailXML . "'" );
-	}
-	
-	$dbh = null;
-} catch ( PDOException $e ) {
-	$errMsg = $e->getFile () . ' (' . $e->getLine () . ')' . $e->getMessage ();
-	$errMsg .= "\ninvXML = " . $invXML;
-	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
-	dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
-	echo $badXML;
-	exit ();
 }
 
 if ($resultDelivered === false) {
@@ -263,7 +285,7 @@ if ($resultDeliveryFail === false) {
 }
 
 // Call sendinvoices.php with the invoice list to generate the PDFs and send them out for non-PRINTED INVOICE
-if ($signerID != PRINTED_INVOICE_ID && $dartDriver) {
+if ($signerID != PRINTED_INVOICE_ID) {
 	$invoiceStr = '';
 	foreach ( $jd->deliveryjson->invoice_list as $invoice )
 		$invoiceStr .= " " . $invoice->saleid;
