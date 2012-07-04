@@ -9,6 +9,8 @@ require ('class.phpmailer.php');
 $locInfo = array ();
 $sendEmails = array ();
 $sendFaxes = array ();
+$offLinePOs = array ();
+$offLinePOcount = 1;
 try {
 	$dbh = new PDO ( 'spdb', '', '' );
 	// set the error reporting attribute.
@@ -26,7 +28,15 @@ try {
 		$shipDate = date ( 'n/j/Y', strtotime ( $row ['dtShip'] ) );
 		$deliveryDate = date ( 'n/j/Y g:i:s A', strtotime ( $row ['dtDartDelivered'] ) );
 		$isDarkStop = ($row ['iSigner'] == DARK_STOP_ID) ? true : false;
-		$locInfo [$row ['iSaleID']] = array ('id' => $row ['iLocationDestinationID'], 'saleID' => $row ['iSaleID'], 'name' => $row ['sDescription'], 'address' => $row ['sAddress1'], 'city' => $row ['sCity'], 'state' => $row ['sState'], 'zip' => $row ['sPostalCode'], 'phone' => $row ['sPhone'], 'salesperson' => $row ['txtSalesPerson'], 'salesphone' => $row ['txtCellPhone'], 'salesemail' => $row ['txtSalesEmail'], 'terms' => $row ['sTerms'], 'po' => $row ['sPO'], 'darkstop' => $isDarkStop, 'signer' => $row ['txtSigner'], 'shipdate' => $shipDate, 'deldate' => $deliveryDate, 'greenYTD' => $row ['mYTD'] );
+		// Determine if this is an offline PO for an EDI
+		if (strlen ( trim ( $row ['sInterchangeID'] ) ) > 0 && strlen ( trim ( $row ['sPO'] ) ) == 0) {
+			$POnumber = 'SP-' . date ( 'ymdHi' ) . '-' . sprintf ( "%02d", $offLinePOcount );
+			$offLinePOs [$row ['iSaleID']] = $POnumber;
+			$offLinePOcount ++;
+		} else {
+			$POnumber = trim ( $row ['sPO'] );
+		}
+		$locInfo [$row ['iSaleID']] = array ('id' => $row ['iLocationDestinationID'], 'saleID' => $row ['iSaleID'], 'name' => $row ['sDescription'], 'address' => $row ['sAddress1'], 'city' => $row ['sCity'], 'state' => $row ['sState'], 'zip' => $row ['sPostalCode'], 'phone' => $row ['sPhone'], 'salesperson' => $row ['txtSalesPerson'], 'salesphone' => $row ['txtCellPhone'], 'salesemail' => $row ['txtSalesEmail'], 'terms' => $row ['sTerms'], 'po' => $POnumber, 'darkstop' => $isDarkStop, 'signer' => $row ['txtSigner'], 'shipdate' => $shipDate, 'deldate' => $deliveryDate, 'greenYTD' => $row ['mYTD'], 'ediID' => trim ( $row ['sInterchangeID'] ) );
 	}
 	$stmt->closeCursor ();
 	
@@ -257,6 +267,91 @@ if (count ( $sendFaxes ) > 0) {
 		SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 		dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG );
 		exit ();
+	}
+}
+
+// Process the EDI invoices
+foreach ( $locInfo as $loc ) {
+	if (strlen ( $loc ['ediID'] ) > 0) {
+		$saleID = $loc ['saleID'];
+		if (array_key_exists ( $saleID, $offLinePOs )) {
+			// Newly generated Offline PO
+			try {
+				$dbh = new PDO ( 'spdb', '', '' );
+				$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
+				$stmt = $dbh->query ( "uspEDIOfflinePORegister " . $saleID . ", '" . $offLinePOs [$saleID] . "'" );
+				$opoEmails = $stmt->fetchAll ( PDO::FETCH_BOTH );
+				$dbh = null;
+			} catch ( PDOException $e ) {
+				$errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $e->getMessage ();
+				SP_ErrorLogging ( $errorTxt, true, DART_ERROR_LOG );
+				exit ();
+			}
+			if (count ( $opoEmails ) > 0) {
+				$fp = fopen ( $emailLogFile, "a" );
+				$subjectStr = "SP Offline PO : " . $offLinePOs [$saleID];
+				fwrite ( $fp, date ( '[d-M-Y H:i:s]' ) . " : " . $subjectStr . " -" );
+				
+				$mail->FromName = "Specialty Produce Accounting";
+				$mail->From = "ar@specialtyproduce.com";
+				$mail->Subject = $subjectStr;
+				$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
+				// Add the PDFs
+				$mail->AddAttachment ( DART_PDF_DIR . $saleID . ".pdf", "$key.pdf" );
+				// Add the body
+				$mail->Body = <<< EOT
+Dear Customer, 
+
+The attached invoice did not have a PO number.
+Since you use a buying group that requires us to transfer POs and invoices with them electronically, we have generated an offline PO number for this invoice.
+
+In order to resolve this offline PO in both their system and ours, you will need to take the following steps:
+1) Log into your buying group's online system and create a new "Offline PO" and set the PO value to:
+EOT;
+				$mail->Body .= "\t" . $offLinePOs [$saleID] . "\n";
+				$mail->Body .= <<< EOT
+2) Then log into the Specialty Produce online system, click the green bar labelled "EDI".
+3) Look over the list of your pending offline POs - those waiting to be sent to your buying group's system.
+4) Click on the appropriate entry, and hit the "Send" button.  This will generate and send the invoice (810) to your buying group's system.
+5) Done!
+
+We appreciate your business.
+
+Sincerely,
+Specialty Produce
+
+EOT;
+				$sendCount = 0;
+				foreach ( $opoEmails as $entry ) {
+					fwrite ( $fp, " " . $entry ['txtEmail'] );
+					$mail->AddAddress ( $entry ['txtEmail'], $entry ['txtName'] );
+					if ($mail->Send ()) {
+						$sendCount ++;
+					}
+					$mail->ClearAddresses ();
+				}
+				$mail->ClearAttachments ();
+				fwrite ( $fp, "(" . $sendCount . ")\n" );
+				fclose ( $fp );
+			}
+		} else {
+			// PO came through the normal channels so generate the 810
+			include_once 'EDI_SP\Receivers\\' . $loc ['ediID'] . '\ts810.php';
+			$tsFunction = $loc ['ediID'] . '_810';
+			list ( $success, $msg ) = $tsFunction ( $loc ['saleID'] );
+			if (! $success) {
+				$errMsg = "$tsFunction returned false : $msg";
+				SP_errorLogging ( $errMsg, true, 'error_edi' );
+				continue;
+			}
+			$outFileName = 'O_SP_' . date ( 'md_His' ) . '.810';
+			$outPath = 'C:\inetpub\filezillaroot\\' . $loc ['ediID'] . '\outgoing\\' . $outFileName;
+			if (! file_put_contents ( $outPath, $msg )) {
+				$errMsg = "Error writing outgoing 810 : $outPath";
+				SP_errorLogging ( $errMsg, true, 'error_edi' );
+				continue;
+			}
+		}
 	}
 }
 

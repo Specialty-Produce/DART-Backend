@@ -54,7 +54,8 @@ try {
 	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
 	
 	$truckinfo = preg_split ( '/:/', $clInfo->truck );
-	$sqlds = "uspDARTTruckDataStart $dartSession, $userid, " . $truckinfo [0] . ", " . $clInfo->odometer;
+	$odoReading = ($clInfo->odometer > 999999) ? 999999 : $clInfo->odometer;
+	$sqlds = "uspDARTTruckDataStart $dartSession, $userid, " . $truckinfo [0] . ", " . $odoReading;
 	$stmt = $dbh->query ( $sqlds );
 	$dataresult = $stmt->fetch ( PDO::FETCH_ASSOC );
 	$stmt->closeCursor ();
