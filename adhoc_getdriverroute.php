@@ -3,24 +3,26 @@ include_once 'global_CDC.php';
 include 'dart_init.php';
 $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 
+// Browers on our local network get access to the pages, otherwise you have to have validated as an SP employee
+$dotted_ip_address = $_SERVER ['REMOTE_ADDR'];
+$ip_number = (ip2long ( $dotted_ip_address )) ? sprintf ( "%u", ip2long ( $dotted_ip_address ) ) : 0;
+if ($ip_number < 1185397282 || $ip_number > 1185397309) {
+	echo "Action not allowed...";
+	exit ();
+}
+
+$userid = filter_input ( INPUT_GET, 'u', FILTER_VALIDATE_INT );
+if ($userid == FALSE || is_null ( $userid )) {
+	echo "No user ID provided...";
+	exit ();
+}
+
 // On various errors and failures, we'll use the status BAD update XML
 $badXML = <<< EOT
 <?xml version="1.0"?>
 <driverroute_location_list status="failed" code="0" retry="true" errmsg="XXX">
 </driverroute_location_list>
 EOT;
-
-// Log the data
-$postData = (isset ( $_POST )) ? serialize ( $_POST ) : 'none';
-dartLogging ( $currentScript, "postdata=" . $postData );
-
-// User ID
-$userid = filter_input ( INPUT_POST, 'userid', FILTER_SANITIZE_NUMBER_INT );
-if ($userid == FALSE || is_null ( $userid )) {
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid User ID', $badXML );
-	echo $badXML;
-	exit ();
-}
 
 try {
 	$dbh = new PDO ( 'spdb', '', '' );
@@ -133,7 +135,7 @@ foreach ( $locationList as $locID ) {
 	$resultStr .= "<signers_entry_list>\n";
 	if ($requiresPaper == "false") {
 		foreach ( $location [$locID] ['signers'] as $entry ) {
-			$resultStr .= '<entry id="' . $entry ['userID'] . '" cell="' . $entry['cell'] . '" email="' . $entry['email'] . '" first="' . $entry ['fname'] . '" last="' . $entry ['lname'] . '">' . $entry ['fname'] . " " . $entry ['lname'] . "</entry>\n";
+			$resultStr .= '<entry id="' . $entry ['userID'] . '" cell="' . $entry['cell'] . '" email="' . $entry['email'] . '">' . $entry ['fname'] . " " . $entry ['lname'] . "</entry>\n";
 		}
 	}
 	// The signer to use if there is a paper invoice present.

@@ -49,33 +49,57 @@ if (count ( $saleIDs ) == 0) {
 
 // Get the invoices marked as "being delivered", which is code 1 for this stored procedure
 $updateCode = 1;
-$signerID = 0;  // Only matters for when we are running deliverycomplete.php
+$signerID = 0; // Only matters for when we are running deliverycomplete.php
 $invXML = '';
 $result = false;
-try {
-	$dbh = new PDO ( 'spdb', '', '' );
-	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-	
-	// Prep for the XML version of invoice list for the stored procedure
-	$invXML = "<ROOT>\n";
-	foreach ( $saleIDs as $id )
-		$invXML .= '<Rec rID = "' . $id . '"/>' . "\n";
-	$invXML .= "</ROOT>\n";
-	// dartLogging ( $currentScript, "invXML=" . $invXML );
-	$result = $dbh->exec ( "uspDARTDelivered $updateCode, $signerID, '" . $invXML . "'" );
-	
-	// Get the invoice data
-	$stmt = $dbh->query ( "uspDARTCheckLastUpdate '" . $invXML . "'" );
-	$invInfo = $stmt->fetchAll ( PDO::FETCH_BOTH );
-	$stmt->closeCursor ();
-	
-	$dbh = null;
-} catch ( PDOException $e ) {
-	$errMsg = $e->getFile () . ' (' . $e->getLine () . ')' . $e->getMessage ();
-	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
-	echo $badXML;
-	exit ();
+$sqlFailed = true;
+$sqlAttemptCount = 1;
+$sql = '';
+while ( $sqlFailed ) {
+	$sqlFailed = false;
+	try {
+		$dbh = new PDO ( 'spdb', '', '' );
+		$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
+		
+		// Prep for the XML version of invoice list for the stored procedure
+		$invXML = "<ROOT>\n";
+		foreach ( $saleIDs as $id )
+			$invXML .= '<Rec rID = "' . $id . '"/>' . "\n";
+		$invXML .= "</ROOT>\n";
+		// dartLogging ( $currentScript, "invXML=" . $invXML );
+		$sql = "uspDARTDelivered $updateCode, $signerID, '" . $invXML . "'";
+		$result = $dbh->exec ( $sql );
+		
+		// Get the invoice data
+		$sql = "uspDARTCheckLastUpdate '" . $invXML . "'";
+		$stmt = $dbh->query ( $sql );
+		$invInfo = $stmt->fetchAll ( PDO::FETCH_BOTH );
+		$stmt->closeCursor ();
+		
+		$dbh = null;
+	} catch ( PDOException $e ) {
+		$errMsg = "SQL = $sql\n";
+		$eMessage = $e->getMessage ();
+		$errMsg .= $e->getFile () . ' (' . $e->getLine () . ')' . " sqlAttemptCount=$sqlAttemptCount : " . $eMessage;
+		$errMsg .= "\ninvXML = " . $invXML;
+		SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
+		if (preg_match ( '/Timeout expired/', $eMessage ) || preg_match ( '/SQL Server does not exist or access denied/', $eMessage ) || preg_match ( '/deadlock victim/', $eMessage )) {
+			if ($sqlAttemptCount < DART_SQL_TIMEOUT_MAX_TRIES) {
+				$sqlAttemptCount ++;
+				$sqlFailed = true;
+				sleep ( DART_SQL_TIMEOUT_SLEEP );
+			} else {
+				$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database timeout, see ' . DART_ERROR_LOG . ' log', $badXML );
+				$badXML = preg_replace ( '/code="0"/', 'code="1"', $badXML );
+				echo $badXML;
+				exit ();
+			}
+		} else {
+			$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
+			echo $badXML;
+			exit ();
+		}
+	}
 }
 
 if ($result === false) {
@@ -92,7 +116,7 @@ $resultStr .= '<updateinvoices status="success">' . "\n";
 $resultStr .= '<invoices_invoice_list>' . "\n";
 foreach ( $invInfo as $item ) {
 	$lastUpdate = preg_replace ( '/(.*)\.\d{3}$/', '$1', $item ['dtDartLastUpdated'] );
-	$resultStr .= '<invoice saleid="' . $item['iSaleID'] . '" locid="' . $item['iLocationDestinationID'] . '" lastupdate="' . $lastUpdate . '" />' . "\n";
+	$resultStr .= '<invoice saleid="' . $item ['iSaleID'] . '" locid="' . $item ['iLocationDestinationID'] . '" lastupdate="' . $lastUpdate . '" />' . "\n";
 }
 $resultStr .= '</invoices_invoice_list>' . "\n";
 $resultStr .= '</updateinvoices>' . "\n";

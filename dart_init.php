@@ -18,15 +18,15 @@ define ( "DART_FAX_DIR", "\\\\Server3\\DartFaxes\$\\" );
 define ( "SCAN_INVOICE_DIR", "\\\\vServices\\invoices\$\\" );
 
 // Kludge to have users never get invoices
-define ( "DONT_SEND_INVOICE_EMAIL", "dontsendinvoices@specialtyproduce.com");
+define ( "DONT_SEND_INVOICE_EMAIL", "dontsendinvoices@specialtyproduce.com" );
 
 // SQL error-trapping
-define ("DART_SQL_TIMEOUT_SLEEP", 3);
-define ("DART_SQL_TIMEOUT_MAX_TRIES", 3);
+define ( "DART_SQL_TIMEOUT_SLEEP", 3 );
+define ( "DART_SQL_TIMEOUT_MAX_TRIES", 3 );
 
 // Error Codes
-define ("DART_ERR_NONE", 0);
-define ("DART_ERR_SQL_DB_TIMEOUT", 1);
+define ( "DART_ERR_NONE", 0 );
+define ( "DART_ERR_SQL_DB_TIMEOUT", 1 );
 
 function dartLogging($webservice, $data, $code = '') {
 	$filename = DART_LOG_DIR . $webservice . ".log";
@@ -34,6 +34,13 @@ function dartLogging($webservice, $data, $code = '') {
 	$timeStamp = date ( '[d-M-Y H:i:s]' );
 	fwrite ( $confirmFile, $timeStamp . " : " . $code . " : " . $data . "\n" );
 	fclose ( $confirmFile );
+}
+
+function DART_escapeXmlString($str) {
+	// must do ampersand first
+	$search = array ('&', '>', '<', "'", '"' );
+	$repl = array ('&amp;', '&gt;', '&lt;', '&apos;', '&quot;' );
+	return str_replace ( $search, $repl, $str );
 }
 
 $pullColors = array ("#FFFFFF", "#66FFFF", "#E62E00" );

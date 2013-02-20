@@ -10,15 +10,19 @@ $badXML = <<< EOT
 </driverinvoices_invoice_list>
 EOT;
 
-// User ID
-$userid = filter_input ( INPUT_POST, 'userid', FILTER_SANITIZE_NUMBER_INT );
-if ($userid == FALSE || is_null ( $userid )) {
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid User ID', $badXML );
-	echo $badXML;
+// Browers on our local network get access to the pages, otherwise you have to have validated as an SP employee
+$dotted_ip_address = $_SERVER ['REMOTE_ADDR'];
+$ip_number = (ip2long ( $dotted_ip_address )) ? sprintf ( "%u", ip2long ( $dotted_ip_address ) ) : 0;
+if ($ip_number < 1185397282 || $ip_number > 1185397309) {
+	echo "Action not allowed...";
 	exit ();
 }
 
-dartLogging ( $currentScript, "userid=" . $userid );
+$userid = filter_input ( INPUT_GET, 'u', FILTER_VALIDATE_INT );
+if ($userid == FALSE || is_null ( $userid )) {
+	echo "No user ID provided...";
+	exit ();
+}
 
 try {
 	$dbh = new PDO ( 'spdb', '', '' );

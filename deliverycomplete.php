@@ -49,6 +49,7 @@ if (! preg_match ( '/,"userid":"\d+"}$/', $appJSON )) {
 
 // TODO CRC check
 
+
 // Good to go...
 $jd = json_decode ( $appJSON );
 
@@ -175,6 +176,20 @@ while ( $sqlFailed ) {
 			$sigEmail = trim ( $jd->deliveryjson->delivery->signerinfo->email );
 			$sql .= ($sigEmail == '') ? 'null' : "'" . $sigEmail . "'";
 			$sql .= ", 1, ";
+			$sigPhone = formatPhone ( trim ( $jd->deliveryjson->delivery->signerinfo->phone ) );
+			$sql .= ($sigPhone == '') ? 'null' : "'" . $sigPhone . "'";
+			dartLogging ( $currentScript, "    uspDARTAddSigner sql=" . $sql, $codeStr );
+			$stmt = $dbh->query ( $sql );
+			$result = $stmt->fetch ( PDO::FETCH_ASSOC );
+			$signerID = $result ['iUserID'];
+			$stmt->closeCursor ();
+		} elseif ($signerID > 0 && strlen ( trim ( $jd->deliveryjson->delivery->signerinfo->fname ) ) > 1) {
+			// Update the signer
+			$sql = "uspDARTAddSigner $signerID, $locationID, '" . preg_replace ( '/\'+/', '\'\'', trim ( $jd->deliveryjson->delivery->signerinfo->fname ) ) . "', ";
+			$sql .= "'" . preg_replace ( '/\'+/', '\'\'', trim ( $jd->deliveryjson->delivery->signerinfo->lname ) ) . "', ";
+			$sigEmail = trim ( $jd->deliveryjson->delivery->signerinfo->email );
+			$sql .= ($sigEmail == '') ? 'null' : "'" . $sigEmail . "'";
+			$sql .= ", 3, ";
 			$sigPhone = formatPhone ( trim ( $jd->deliveryjson->delivery->signerinfo->phone ) );
 			$sql .= ($sigPhone == '') ? 'null' : "'" . $sigPhone . "'";
 			dartLogging ( $currentScript, "    uspDARTAddSigner sql=" . $sql, $codeStr );

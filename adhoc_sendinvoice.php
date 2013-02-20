@@ -7,12 +7,19 @@ require_once 'EDI_SP.php';
 require ('classes_SP/class_SP_cURLFTP.php');
 require ('class.phpmailer.php');
 
+exit();
+
 // Get the information on the location associated with these invoices
 $locInfo = array ();
 $sendEmails = array ();
 $sendFaxes = array ();
 $offLinePOs = array ();
 $offLinePOcount = 1;
+$argv [0] = 'adhoc_sendinvoice.php';
+$argv [1] = 1665822;
+echo "<pre>\n";
+echo "Starting...\n\n";
+
 try {
 	$dbh = new PDO ( 'spdb', '', '' );
 	// set the error reporting attribute.
@@ -62,6 +69,7 @@ try {
 }
 
 // Work through each invoice and save the PDF
+/*
 for($i = 1; $i < count ( $argv ); $i ++) {
 	$invNum = $argv [$i];
 	
@@ -156,6 +164,7 @@ for($i = 1; $i < count ( $argv ); $i ++) {
 	$pdf->Output ( $outFile, 'F' );
 	$pdf = null;
 }
+*/
 
 // Keep track of how many places this is sent to successfully.  If we are at "0" at the end, print for sales person
 $sendCount = 0;
@@ -168,6 +177,7 @@ $mail->SMTPAuth = false;
 
 // Send the emails
 $emailLogFile = SPConsts::ErrorLogRoot . "dart_emails.txt";
+/*
 if (count ( $sendEmails ) > 0) {
 	$fp = fopen ( $emailLogFile, "a" );
 	
@@ -271,6 +281,7 @@ if (count ( $sendFaxes ) > 0) {
 		exit ();
 	}
 }
+*/
 
 // Process the EDI invoices
 $ftpConnector = new SP_cURLFTP ();
@@ -299,7 +310,7 @@ foreach ( $locInfo as $loc ) {
 				$mail->From = "ar@specialtyproduce.com";
 				$mail->Subject = $subjectStr;
 				$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
-				//$mail->AddBCC ( "christopher@specialtyproduce.com", "Christopher Cilley" );
+				$mail->AddBCC ( "christopher@specialtyproduce.com", "Christopher Cilley" );
 				// Add the PDFs
 				$mail->AddAttachment ( DART_PDF_DIR . $saleID . ".pdf", "$saleID.pdf" );
 				// Add the body
@@ -310,7 +321,6 @@ The attached invoice did not have a PO number.
 Since you use a buying group that requires us to transfer POs and invoices with them electronically, we have generated an offline PO number for this invoice.
 
 Please make sure you take the appropriate steps in your buying group's online system to accept this PO:
-
 EOT;
 				$mail->Body .= "\tInvoice # " . $saleID . ", PO # " . $offLinePOs [$saleID] . "\n";
 				$mail->Body .= <<< EOT
@@ -341,70 +351,63 @@ EOT;
 		list ( $success, $msg ) = $tsFunction ( $loc ['saleID'] );
 		if (! $success) {
 			$errMsg = "$tsFunction returned false : $msg";
-			$errMsg .= "\nsaleID = " . $loc ['saleID'] . ", ediID = " . $loc ['ediID'];
-			SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
-			continue;
-		}
-		if (strlen($msg) == 0) {
-			$errMsg = "$tsFunction returned empty EDI string";
-			$errMsg .= "\nsaleID = " . $loc ['saleID'] . ", ediID = " . $loc ['ediID'];
-			SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
+			SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG );
 			continue;
 		}
 		$outFileName = 'O_SP_' . date ( 'md_His' ) . '.810';
 		$outPath = EDISPConsts::FTP_ROOT . $loc ['ediID'] . '\outgoing\\';
 		$outFile = $outPath . $outFileName;
 		if (! file_put_contents ( $outFile, $msg )) {
-			$errMsg = "Error writing outgoing 810 : $outFile" . "\nfor invoice # " . $loc ['saleID'];
-			SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
+			$errMsg = "Error writing outgoing 810 : $outFile";
+			SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG );
 			continue;
 		}
 		// Set up the ftp connection 
 		if ($ftpConnector->numOutFiles () == 0) {
+			echo "SP_INTERCHANGE_ID = " . EDISPConsts::SP_INTERCHANGE_ID . "\n";
+			echo "edi = " . $loc ['ediID'] . "\n";
+			echo "url = " . constant ( 'EDISPConsts::' . $loc ['ediID'] . "_FTP" ) . "\n";
 			$ftpConnector->cURL = constant ( 'EDISPConsts::' . $loc ['ediID'] . "_FTP" );
+			echo "userpwd = " . constant ( 'EDISPConsts::' . $loc ['ediID'] . "_USERNAME" ) . ":" . constant ( 'EDISPConsts::' . $loc ['ediID'] . "_PASSWORD" ) . "\n";
 			$ftpConnector->cUSERPWD = constant ( 'EDISPConsts::' . $loc ['ediID'] . "_USERNAME" ) . ":" . constant ( 'EDISPConsts::' . $loc ['ediID'] . "_PASSWORD" );
 			$ftpConnector->setOutPath ( $outPath );
 		}
-		$sentSuccessfully = true;
 		$ftpConnector->addOutFile ( $outFileName );
 		try {
 			$ftpConnector->sendOutFiles ();
 		} catch ( SP_Exception $spe ) {
-			SP_ErrorLogging ( $spe, true, DART_ERROR_LOG, "DART Error : cURL send" );
+			SP_ErrorLogging ( $spe, true, DART_ERROR_LOG );
 			dartLogging ( $currentScript, "    EDI cURL error, see " . DART_ERROR_LOG );
-			$sentSuccessfully = false;
 		}
-		if ($sentSuccessfully) {
-			// Save the outgoing file to the EDI dir
-			$savePath = EDISPConsts::EDI_SAVE_DIR . $loc ['ediID'] . '\outgoing\\' . $outFileName;
-			if (! copy ( $outFile, $savePath )) {
-				flagFTPFile ( $loc ['ediID'], $outFile );
-				$errMsg = "Error saving $outFile to $savePath\nfor invoice # " . $loc ['saleID'];
-				SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
-				continue;
-			}
-			/*
-			if (! unlink ( $outFile )) {
-				flagFTPFile ( $loc ['ediID'], $outFile );
-				$errMsg = "Error unlinking $outFile\nfor invoice # " . $loc ['saleID'];
-				SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
-				continue;
-			}
-			*/
-		} else {
-			$errMsg = "File not sent successfully, moved to flagged folder on vDart:\n$outFile\nfor invoice # " . $loc ['saleID'];
-			SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, $currentScript . " - EDI error" );
+		// Save the outgoing file to the EDI dir
+		$savePath = EDISPConsts::EDI_SAVE_DIR . $loc ['ediID'] . '\outgoing\\' . $outFileName;
+		if (! copy ( $outFile, $savePath )) {
 			flagFTPFile ( $loc ['ediID'], $outFile );
+			$errMsg = "Error saving $outFile to $savePath";
+			SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG );
+			continue;
+		}
+		if (! unlink ( $outFile )) {
+			flagFTPFile ( $loc ['ediID'], $outFile );
+			$errMsg = "Error unlinking $outFile";
+			SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG );
+			continue;
 		}
 	}
 }
 
 // Remove the PDFs
+/*
 sleep ( 5 );
 foreach ( array_keys ( $locInfo ) as $invNum ) {
 	$outFile = DART_PDF_DIR . $invNum . ".pdf";
 	unlink ( $outFile );
 }
+*/
+
+
+echo "\n\nDone...\n";
+echo "<pre>\n";
 
 exit ( 0 );
 ?>
