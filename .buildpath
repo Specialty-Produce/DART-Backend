@@ -2,5 +2,6 @@
 <buildpath>
 	<buildpathentry external="true" kind="lib" path="C:/PHP/includes"/>
 	<buildpathentry kind="con" path="org.eclipse.php.core.LANGUAGE"/>
+	<buildpathentry external="true" kind="lib" path="D:/Zend/EDI_SP"/>
 	<buildpathentry kind="src" path=""/>
 </buildpath>

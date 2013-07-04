@@ -132,6 +132,12 @@ if ($jd->userid == DEBUG_USERID) {
 	exit ();
 }
 
+// Quick fix
+/*
+if ($jd->deliveryjson->delivery->signerinfo->lname == 'CaÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â±ez')
+	$jd->deliveryjson->delivery->signerinfo->lname = 'C';
+*/
+
 // Get the invoices marked as "delivered", which is code 2 for this stored procedure
 $updateCode = 2;
 $invXML = '';
@@ -171,8 +177,8 @@ while ( $sqlFailed ) {
 		// First check to see if there is a signer
 		if ($signerID == 0) {
 			// Add the signer
-			$sql = "uspDARTAddSigner 0, $locationID, '" . preg_replace ( '/\'+/', '\'\'', trim ( $jd->deliveryjson->delivery->signerinfo->fname ) ) . "', ";
-			$sql .= "'" . preg_replace ( '/\'+/', '\'\'', trim ( $jd->deliveryjson->delivery->signerinfo->lname ) ) . "', ";
+			$sql = "uspDARTAddSigner 0, $locationID, '" . substr ( preg_replace ( '/\'+/', '\'\'', trim ( $jd->deliveryjson->delivery->signerinfo->fname ) ), 0, 75 ) . "', ";
+			$sql .= "'" . substr ( preg_replace ( '/\'+/', '\'\'', trim ( $jd->deliveryjson->delivery->signerinfo->lname ) ), 0, 75 ) . "', ";
 			$sigEmail = trim ( $jd->deliveryjson->delivery->signerinfo->email );
 			$sql .= ($sigEmail == '') ? 'null' : "'" . $sigEmail . "'";
 			$sql .= ", 1, ";
@@ -185,8 +191,8 @@ while ( $sqlFailed ) {
 			$stmt->closeCursor ();
 		} elseif ($signerID > 0 && strlen ( trim ( $jd->deliveryjson->delivery->signerinfo->fname ) ) > 1) {
 			// Update the signer
-			$sql = "uspDARTAddSigner $signerID, $locationID, '" . preg_replace ( '/\'+/', '\'\'', trim ( $jd->deliveryjson->delivery->signerinfo->fname ) ) . "', ";
-			$sql .= "'" . preg_replace ( '/\'+/', '\'\'', trim ( $jd->deliveryjson->delivery->signerinfo->lname ) ) . "', ";
+			$sql = "uspDARTAddSigner $signerID, $locationID, '" . substr ( preg_replace ( '/\'+/', '\'\'', trim ( $jd->deliveryjson->delivery->signerinfo->fname ) ), 0, 75 ) . "', ";
+			$sql .= "'" . substr ( preg_replace ( '/\'+/', '\'\'', trim ( $jd->deliveryjson->delivery->signerinfo->lname ) ), 0, 75 ) . "', ";
 			$sigEmail = trim ( $jd->deliveryjson->delivery->signerinfo->email );
 			$sql .= ($sigEmail == '') ? 'null' : "'" . $sigEmail . "'";
 			$sql .= ", 3, ";

@@ -4,7 +4,7 @@ include 'dart_init.php';
 $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 require ('classes_SP/class_invoicePDF.php');
 require_once 'EDI_SP.php';
-require ('classes_SP/class_SP_cURLFTP.php');
+require ('classes_SP/class_SP_FTP.php');
 require ('class.phpmailer.php');
 
 // Get the information on the location associated with these invoices
@@ -31,14 +31,16 @@ try {
 		$deliveryDate = date ( 'n/j/Y g:i:s A', strtotime ( $row ['dtDartDelivered'] ) );
 		$isDarkStop = ($row ['iSigner'] == DARK_STOP_ID) ? true : false;
 		// Determine if this is an offline PO for an EDI
-		if (strlen ( trim ( $row ['sInterchangeID'] ) ) > 0 && strlen ( trim ( $row ['sPO'] ) ) == 0) {
-			$POnumber = 'SP-' . date ( 'ymdHi' ) . '-' . sprintf ( "%02d", $offLinePOcount );
-			$offLinePOs [$row ['iSaleID']] = $POnumber;
-			$offLinePOcount ++;
-		} else {
-			$POnumber = trim ( $row ['sPO'] );
+		$ediID = trim ( $row ['sInterchangeID'] );
+		$POnumber = trim ( $row ['sPO'] );
+		if (strlen ( $ediID ) > 0 && strlen ( $POnumber ) == 0) {
+			if (constant ( 'EDISPConsts::' . $ediID . "_REQUIREPO" )) {
+				$POnumber = 'SP-' . date ( 'ymdHi' ) . '-' . sprintf ( "%02d", $offLinePOcount );
+				$offLinePOs [$row ['iSaleID']] = $POnumber;
+				$offLinePOcount ++;
+			}
 		}
-		$locInfo [$row ['iSaleID']] = array ('id' => $row ['iLocationDestinationID'], 'saleID' => $row ['iSaleID'], 'name' => $row ['sDescription'], 'address' => $row ['sAddress1'], 'city' => $row ['sCity'], 'state' => $row ['sState'], 'zip' => $row ['sPostalCode'], 'phone' => $row ['sPhone'], 'salesperson' => $row ['txtSalesPerson'], 'salesphone' => $row ['txtCellPhone'], 'salesemail' => $row ['txtSalesEmail'], 'terms' => $row ['sTerms'], 'po' => $POnumber, 'darkstop' => $isDarkStop, 'signer' => $row ['txtSigner'], 'shipdate' => $shipDate, 'deldate' => $deliveryDate, 'greenYTD' => $row ['mYTD'], 'ediID' => trim ( $row ['sInterchangeID'] ) );
+		$locInfo [$row ['iSaleID']] = array ('id' => $row ['iLocationDestinationID'], 'saleID' => $row ['iSaleID'], 'name' => $row ['sDescription'], 'address' => $row ['sAddress1'], 'city' => $row ['sCity'], 'state' => $row ['sState'], 'zip' => $row ['sPostalCode'], 'phone' => $row ['sPhone'], 'salesperson' => $row ['txtSalesPerson'], 'salesphone' => $row ['txtCellPhone'], 'salesemail' => $row ['txtSalesEmail'], 'terms' => $row ['sTerms'], 'po' => $POnumber, 'darkstop' => $isDarkStop, 'signer' => $row ['txtSigner'], 'shipdate' => $shipDate, 'deldate' => $deliveryDate, 'greenYTD' => $row ['mYTD'], 'ediID' => $ediID );
 	}
 	$stmt->closeCursor ();
 	
@@ -192,15 +194,15 @@ if (count ( $sendEmails ) > 0) {
 	$mail->Body = <<< EOT
 Dear Customer, 
 
-Remember, you can always view your invoice history and proof of delivery by logging into your account at www.specialtyproduce.com.
+Your latest signed invoice is attached.  Remember, you can always view your invoice history and proof of delivery by logging into your account at www.specialtyproduce.com.
 
-Your invoice is attached. Please make check payable to Specialty Produce and mail it to:
-P.O. Box 82951, San Diego, CA 92138
+Refer to attached invoice for your payment terms. Payment is due in our office by your payment terms date.
 
-Refer to attached invoice for your payment terms. Payment is due in our office by your payment term.
-Should you have any questions, please contact accounting department at AR@SPECIALTYPRODUCE.COM or (619) 876-4070.
+You can remit payment two ways...
+ + Online : Simply log into your account at www.specialtyproduce.com and click the green bar for "Accounting - Online Bill Pay".  Please note, you will need to first contact our accounting department at ar@specialtyproduce.com or (619) 876-4070 to activate your account for online bill pay.
+ + Mail : Make checks payable to Specialty Produce and mail it to: P.O. Box 82951, San Diego, CA 92138
 
-Please disregard this email if you have already remit the payment.
+Should you have any questions, please contact accounting department at ar@specialtyproduce.com or (619) 876-4070.
 
 We appreciate your business.
 
@@ -254,7 +256,7 @@ if (count ( $sendFaxes ) > 0) {
 		$dbh = new PDO ( 'spdb', '', '' );
 		$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
 		$sql = "uspDARTFaxListAdd '$invXML'";
-		dartLogging ( $currentScript, "    Dart Fax add, sql = " . $invXML );
+		//dartLogging ( $currentScript, "    Dart Fax add, sql = " . $invXML );
 		$resultFaxAdded = $dbh->exec ( $sql );
 		
 		$dbh = null;
@@ -273,7 +275,7 @@ if (count ( $sendFaxes ) > 0) {
 }
 
 // Process the EDI invoices
-$ftpConnector = new SP_cURLFTP ();
+$ftpConnector = new SP_FTP ();
 foreach ( $locInfo as $loc ) {
 	if (strlen ( $loc ['ediID'] ) > 0) {
 		$saleID = $loc ['saleID'];
@@ -297,6 +299,7 @@ foreach ( $locInfo as $loc ) {
 				
 				$mail->FromName = "Specialty Produce Accounting";
 				$mail->From = "ar@specialtyproduce.com";
+				$mail->AddCC = "christopher@specialtyproduce.com";
 				$mail->Subject = $subjectStr;
 				$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
 				//$mail->AddBCC ( "christopher@specialtyproduce.com", "Christopher Cilley" );
@@ -345,13 +348,13 @@ EOT;
 			SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
 			continue;
 		}
-		if (strlen($msg) == 0) {
+		if (strlen ( $msg ) == 0) {
 			$errMsg = "$tsFunction returned empty EDI string";
 			$errMsg .= "\nsaleID = " . $loc ['saleID'] . ", ediID = " . $loc ['ediID'];
 			SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
 			continue;
 		}
-		$outFileName = 'O_SP_' . date ( 'md_His' ) . '.810';
+		$outFileName = 'O_SP_' . date ( 'ymd_His' ) . '.810';
 		$outPath = EDISPConsts::FTP_ROOT . $loc ['ediID'] . '\outgoing\\';
 		$outFile = $outPath . $outFileName;
 		if (! file_put_contents ( $outFile, $msg )) {
@@ -359,23 +362,28 @@ EOT;
 			SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
 			continue;
 		}
-		// Set up the ftp connection 
-		if ($ftpConnector->numOutFiles () == 0) {
-			$ftpConnector->cURL = constant ( 'EDISPConsts::' . $loc ['ediID'] . "_FTP" );
-			$ftpConnector->cUSERPWD = constant ( 'EDISPConsts::' . $loc ['ediID'] . "_USERNAME" ) . ":" . constant ( 'EDISPConsts::' . $loc ['ediID'] . "_PASSWORD" );
-			$ftpConnector->setOutPath ( $outPath );
-		}
+		// Set up the ftp connection, if needed
 		$sentSuccessfully = true;
-		$ftpConnector->addOutFile ( $outFileName );
-		try {
-			$ftpConnector->sendOutFiles ();
-		} catch ( SP_Exception $spe ) {
-			SP_ErrorLogging ( $spe, true, DART_ERROR_LOG, "DART Error : cURL send" );
-			dartLogging ( $currentScript, "    EDI cURL error, see " . DART_ERROR_LOG );
-			$sentSuccessfully = false;
+		if (constant ( 'EDISPConsts::' . $loc ['ediID'] . "_SENDFTP" )) {
+			$ftpConnector->server = constant ( 'EDISPConsts::' . $loc ['ediID'] . "_FTP" );
+			$ftpConnector->username = constant ( 'EDISPConsts::' . $loc ['ediID'] . "_USERNAME" );
+			$ftpConnector->password = constant ( 'EDISPConsts::' . $loc ['ediID'] . "_PASSWORD" );
+			try {
+				$ftpConnector->sendFile ( $outPath, $outFileName );
+			} catch ( SP_Exception $spe ) {
+				SP_ErrorLogging ( $spe, true, DART_ERROR_LOG, "DART Error : cURL send" );
+				$sentSuccessfully = false;
+			}
+			if ($sentSuccessfully) {
+				dartLogging ( $currentScript, "    Successfully FTP'd " . $outFile );
+			} else {
+				$errMsg = "File not sent successfully, moved to flagged folder on vDart:\n$outFile\nfor invoice # " . $loc ['saleID'];
+				SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, $currentScript . " - EDI error" );
+				flagFTPFile ( $loc ['ediID'], $outFile );
+			}
 		}
+		// Save the outgoing file to the EDI dir
 		if ($sentSuccessfully) {
-			// Save the outgoing file to the EDI dir
 			$savePath = EDISPConsts::EDI_SAVE_DIR . $loc ['ediID'] . '\outgoing\\' . $outFileName;
 			if (! copy ( $outFile, $savePath )) {
 				flagFTPFile ( $loc ['ediID'], $outFile );
@@ -383,18 +391,15 @@ EOT;
 				SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
 				continue;
 			}
-			/*
-			if (! unlink ( $outFile )) {
-				flagFTPFile ( $loc ['ediID'], $outFile );
-				$errMsg = "Error unlinking $outFile\nfor invoice # " . $loc ['saleID'];
-				SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
-				continue;
+			// Unlink the file if we sent it, otherwise it will sit waiting to be picked up and subsequently deleted.
+			if (constant ( 'EDISPConsts::' . $loc ['ediID'] . "_SENDFTP" )) {
+				if (! unlink ( $outFile )) {
+					flagFTPFile ( $loc ['ediID'], $outFile );
+					$errMsg = "Error unlinking $outFile\nfor invoice # " . $loc ['saleID'];
+					SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
+					continue;
+				}
 			}
-			*/
-		} else {
-			$errMsg = "File not sent successfully, moved to flagged folder on vDart:\n$outFile\nfor invoice # " . $loc ['saleID'];
-			SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, $currentScript . " - EDI error" );
-			flagFTPFile ( $loc ['ediID'], $outFile );
 		}
 	}
 }
