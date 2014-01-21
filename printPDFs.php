@@ -6,7 +6,8 @@ $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 $fileWaitTime = 5 * 60;
 $pdfPath = 'C:\Temp\invoicePDFs\\';
 $theTime = time();
-if ($handle = opendir ( $pdfPath )) {
+$handle = opendir ( $pdfPath );
+if ($handle != false) {
 	while ( false !== ($file = readdir ( $handle )) ) {
 		if ($file != "." && $file != "..") {
 			$filename = $pdfPath . $file;

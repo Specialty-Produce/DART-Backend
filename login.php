@@ -42,7 +42,18 @@ $udid = filter_var ( $jd->udid, FILTER_SANITIZE_STRING );
 if ($udid == FALSE || is_null ( $udid )) {
 	$udid = 'none';
 }
-
+// Device Name
+$deviceName = filter_var ( $jd->devicename );
+if ($deviceName == FALSE || is_null ( $deviceName )) {
+	$deviceName = 'none';
+} else {
+	$deviceName = preg_replace ( '/\'/', "''", $deviceName );
+}
+// APN Token
+$token = filter_var ( $jd->apntoken, FILTER_SANITIZE_STRING );
+if ($token == FALSE || is_null ( $token )) {
+	$token = 'none';
+}
 // Version
 $version = filter_var ( $jd->version, FILTER_SANITIZE_STRING );
 if ($version == FALSE || is_null ( $version )) {
@@ -53,20 +64,20 @@ try {
 	$dbh = new PDO ( 'spdb', '', '' );
 	// set the error reporting attribute.
 	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-	
-	$sql = "uspDARTLogin '$username', '$password', '$udid', '$version'";
+
+	$sql = "uspDARTLogin '$username', '$password', '$udid', '$version', '$deviceName', '$token'";
 	$stmt = $dbh->query ( $sql );
 	$result = $stmt->fetch ( PDO::FETCH_ASSOC );
 	// Returns -1 on invalid username or password
 	$userID = $result ['iUserID'];
 	$stmt->closeCursor ();
-	
+
 	if ($userID == - 1) {
 		$badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid login', $badXML );
 		echo $badXML;
 		exit ();
 	}
-	
+
 	$dbh = null;
 } catch ( PDOException $e ) {
 	$errMsg = $e->getFile () . ' (' . $e->getLine () . ')' . $e->getMessage () . " : username / password = " . $username . "/" . $password;

@@ -30,13 +30,25 @@ if ($saleid == FALSE || is_null ( $saleid )) {
 	exit ();
 }
 
+$successXML = <<< EOT
+<?xml version="1.0"?>
+<transferdriver status="success">
+</transferdriver>
+EOT;
+
+// Done if the DEBUG user
+if ($userid == DEBUG_USERID) {
+	echo $successXML;
+	exit ();
+}
+
 try {
 	$dbh = new PDO ( 'spdb', '', '' );
 	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
 
 	// There is no difference DEBUG_USER and live driver.
 	$result = $dbh->exec ( "uspDARTTransferDriver $saleid, $userid" );
-	
+
 	$dbh = null;
 } catch ( PDOException $e ) {
 	$errMsg = $e->getFile () . ' (' . $e->getLine () . ')' . $e->getMessage ();
@@ -55,11 +67,6 @@ if ($result === false) {
 }
 
 // Generate the XML
-$resultStr = <<< EOT
-<?xml version="1.0"?>
-<transferdriver status="success">
-</transferdriver>
-EOT;
-echo $resultStr;
+echo $successXML;
 exit ();
 ?>

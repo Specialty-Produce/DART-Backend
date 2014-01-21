@@ -12,7 +12,7 @@ class PDF extends FPDF {
 	public $invColSpacing = 0.45;
 	public $invHeaderValues = array ();
 	public $sigPath = DART_SIG_DIR;
-	
+
 	//Page header
 	function Header() {
 		global $locInfo, $invNum;
@@ -33,7 +33,7 @@ class PDF extends FPDF {
 		$this->SetY ( 0.15 );
 		$this->Cell ( $widthRt, 0.2, "Specialty Produce", 0, 1, 'R' );
 		$this->SetFont ( 'Arial', '', 10 );
-		$txt = "P.O. Box 82951\n";
+		$txt = "P.O. Box 82066\n";
 		$txt .= "San Diego, CA  92138\n";
 		$txt .= "Tel 619.295.3172\n";
 		$txt .= "Fax 619.295.9541\n";
@@ -41,7 +41,7 @@ class PDF extends FPDF {
 		$this->SetLeftMargin ( 0.25 );
 		//Logo - 2.25 x 0.95 in
 		$this->Image ( 'images/sp_logo_lg.jpg', 3.125, 0.1, 2.25 );
-		
+
 		// Put the invoice information in the header if this is the first page
 		$this->SetXY ( 0.25, $this->GetY () + 0.2 );
 		$this->SetFont ( 'Arial', 'B', 10 );
@@ -57,7 +57,7 @@ class PDF extends FPDF {
 			if ($i < 5)
 				$this->Cell ( $this->invColSpacing, 0.15, ' ', 0, 0, 'C', false );
 		}
-		
+
 		// Put the item headers in place
 		$this->SetXY ( 0.25, $this->GetY () + 0.25 );
 		$this->SetFont ( 'Arial', 'B', 10 );
@@ -68,7 +68,7 @@ class PDF extends FPDF {
 		}
 		$this->SetXY ( 0.25, $this->GetY () + 0.2 );
 	}
-	
+
 	//Page footer
 	function Footer() {
 		// Add the company info
