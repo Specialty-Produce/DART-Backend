@@ -12,9 +12,12 @@ $badXML = <<< EOT
 </pullreport_item_list>
 EOT;
 
+// Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
+$codeStr = generateRandomCode ( 6 );
+
 // Log the data
 $postData = (isset ( $_POST )) ? serialize ( $_POST ) : 'none';
-dartLogging ( $currentScript, "postdata=" . $postData );
+dartLogging ( $currentScript, "postdata=" . $postData, $codeStr );
 
 // User ID
 $userid = filter_input ( INPUT_POST, 'userid', FILTER_SANITIZE_NUMBER_INT );
@@ -58,5 +61,6 @@ foreach ( $pullReport as $entry ) {
 }
 $resultStr .= "</pullreport_item_list>";
 echo $resultStr;
+dartLogging ( $currentScript, "  Success", $codeStr );
 exit();
 ?>

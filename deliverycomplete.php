@@ -22,7 +22,7 @@ $codeStr = generateRandomCode ( 6 );
 // Get the POST data
 if (isset ( $_POST ['jsondata'] )) {
 	$appJSON = $_POST ['jsondata'];
-	//dartLogging ( $currentScript, "jsondata=" . (preg_replace ( '/(,"signatureimage":")[^"]+(","status")/', '$1 --- $2', $appJSON )), $codeStr );
+	// dartLogging ( $currentScript, "jsondata=" . (preg_replace ( '/(,"signatureimage":")[^"]+(","status")/', '$1 --- $2', $appJSON )), $codeStr );
 	dartLogging ( $currentScript, "jsondata=" . $appJSON, $codeStr );
 } else {
 	$appJSON = false;
@@ -74,7 +74,9 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 	$filedir = DART_SIG_DIR . $jd->deliveryjson->delivery->locationid;
 	if (! is_dir ( $filedir )) {
 		if (! mkdir ( $filedir )) {
+			$errMsg = "Could not create folder for locationID = " . $jd->deliveryjson->delivery->locationid;
 			dartLogging ( $currentScript, "    Could not create folder for locationID = " . $jd->deliveryjson->delivery->locationid, $codeStr );
+			SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 			$badXML = preg_replace ( '/XXX/', $currentScript . ' : Could not create folder for locationID = ' . $jd->deliveryjson->delivery->locationid, $badXML );
 			echo $badXML;
 			exit ();
@@ -86,8 +88,19 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 
 		// Create from the encoded string
 		if (! $imgSrc = imagecreatefromstring ( base64_decode ( $invoice->signatureimage ) )) {
+			$errMsg = "Could not create image from signatureimage data, saleID = " . $invoice->saleid . ", code = " . $codeStr;
+			SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 			dartLogging ( $currentScript, "    Could not create image from signatureimage data", $codeStr );
 			$badXML = preg_replace ( '/XXX/', $currentScript . ' : Could not create image from signatureimage data', $badXML );
+
+			// Capture and clear repeating call **********
+			if ($invoice->saleid == 2188909) {
+				$badXML = $successXML;
+				$errMsg = "Captured bad image saleID and sent success, saleID = " . $invoice->saleid . ", code = " . $codeStr;
+				SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
+				dartLogging ( $currentScript, "    Captured bad image saleID and sent success", $codeStr );
+				continue;
+			}
 			echo $badXML;
 			exit ();
 		}
@@ -122,20 +135,13 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 
 // DEBUG sql timeout
 /*
-if (rand ( 1, 2 ) == 1) {
-	sleep ( DART_SQL_TIMEOUT_MAX_TRIES * DART_SQL_TIMEOUT_SLEEP );
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database timeout, see ' . DART_ERROR_LOG . ' log', $badXML );
-	$badXML = preg_replace ( '/code="0"/', 'code="' . DART_ERR_SQL_DB_TIMEOUT . '"', $badXML );
-	echo $badXML;
-	exit ();
-}
-*/
+ * if (rand ( 1, 2 ) == 1) { sleep ( DART_SQL_TIMEOUT_MAX_TRIES * DART_SQL_TIMEOUT_SLEEP ); $badXML = preg_replace ( '/XXX/', $currentScript . ' : Database timeout, see ' . DART_ERROR_LOG . ' log', $badXML ); $badXML = preg_replace ( '/code="0"/', 'code="' . DART_ERR_SQL_DB_TIMEOUT . '"', $badXML ); echo $badXML; exit (); }
+ */
 
 // Quick fix
 /*
-if ($jd->deliveryjson->delivery->signerinfo->lname == 'CaÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â±ez')
-	$jd->deliveryjson->delivery->signerinfo->lname = 'C';
-*/
+ * if ($jd->deliveryjson->delivery->signerinfo->lname == 'CaÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â±ez') $jd->deliveryjson->delivery->signerinfo->lname = 'C';
+ */
 
 // Get the invoices marked as "delivered", which is code 2 for this stored procedure
 $updateCode = 2;
@@ -187,6 +193,7 @@ while ( $sqlFailed ) {
 			$stmt = $dbh->query ( $sql );
 			$result = $stmt->fetch ( PDO::FETCH_ASSOC );
 			$signerID = $result ['iUserID'];
+			dartLogging ( $currentScript, "    uspDARTAddSigner iUserID=" . $signerID, $codeStr );
 			$stmt->closeCursor ();
 		} elseif ($signerID > 0 && strlen ( trim ( $jd->deliveryjson->delivery->signerinfo->fname ) ) > 1) {
 			// Update the signer
@@ -302,6 +309,119 @@ if ($resultDeliveryFail === false) {
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
 	echo $badXML;
 	exit ();
+}
+
+// Submit any new invoices
+if (count ( $jd->new_invoice_ship_today_list ) > 0) {
+	try {
+		$dbh = new PDO ( 'spdb', '', '' );
+		$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
+
+		// Get an invoice number
+		$saleID = 0;
+		$sql = "uspWebOOGetInvoiceNumber " . $jd->deliveryjson->delivery->locationid . ", '" . date ( 'n/j/Y' ) . "'";
+		$stmt = $dbh->query ( $sql );
+		foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
+			$saleID = $row ['iSaleID'];
+		}
+		$stmt->closeCursor ();
+
+		// Add the item to tblSaleDetail
+		$prodID = 0;
+		$unitID = 0;
+		$quantity = 0;
+		$price = 0.0;
+		$stmt = $dbh->prepare ( "INSERT INTO tblSaleDetail
+							(iSaleID, iProductID, iUnitID, fOrderQuantity, fShipQuantity, mUnitPrice)
+							VALUES
+							(:invoiceNum, :prodID, :unitID, :quantityOrd, :quantityShip, :price)" );
+		$stmt->bindParam ( ':invoiceNum', $saleID );
+		$stmt->bindParam ( ':prodID', $prodID );
+		$stmt->bindParam ( ':unitID', $unitID );
+		$stmt->bindParam ( ':quantityOrd', $quantity );
+		$stmt->bindParam ( ':quantityShip', $quantity );
+		$stmt->bindParam ( ':price', $price );
+		foreach ( $jd->new_invoice_ship_today_list as $item ) {
+			$prodID = $item->itemid;
+			$unitID = $item->unitid;
+			$quantity = round ( $item->shipquantity, 2 );
+			$price = sprintf ( '%0.2f', $item->price );
+			$stmt->execute ();
+		}
+		unset ( $stmt );
+
+		// Make it live
+		$stmt = $dbh->prepare ( "UPDATE tblSale SET iLocationSourceID=1 WHERE iSaleID=:invoiceNum" );
+		$stmt->bindParam ( ':invoiceNum', $saleID );
+		$stmt->execute ();
+		unset ( $stmt );
+
+		$dbh = null;
+	} catch ( PDOException $e ) {
+		$eMessage = $e->getMessage ();
+		$errMsg .= $e->getFile () . ' (' . $e->getLine () . ')' . $eMessage;
+		SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
+		dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
+		$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
+		echo $badXML;
+		exit ();
+	}
+}
+
+if (count ( $jd->new_invoice_ship_tomorrow_list ) > 0) {
+	try {
+		$dbh = new PDO ( 'spdb', '', '' );
+		$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
+
+		// Get an invoice number
+		$saleID = 0;
+		$sql = "uspWebOOGetInvoiceNumber " . $jd->deliveryjson->delivery->locationid . ", '" . date ( 'n/j/Y', strtotime ( "tomorrow" ) ) . "'";
+		$stmt = $dbh->query ( $sql );
+		foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
+			$saleID = $row ['iSaleID'];
+		}
+		$stmt->closeCursor ();
+
+		// Add the item to tblSaleDetail
+		$prodID = 0;
+		$unitID = 0;
+		$quantity = 0;
+		$price = 0.0;
+		$stmt = $dbh->prepare ( "INSERT INTO tblSaleDetail
+							(iSaleID, iProductID, iUnitID, fOrderQuantity, fShipQuantity, mUnitPrice)
+							VALUES
+							(:invoiceNum, :prodID, :unitID, :quantityOrd, :quantityShip, :price)" );
+		$stmt->bindParam ( ':invoiceNum', $saleID );
+		$stmt->bindParam ( ':prodID', $prodID );
+		$stmt->bindParam ( ':unitID', $unitID );
+		$stmt->bindParam ( ':quantityOrd', $quantity );
+		$stmt->bindParam ( ':quantityShip', $quantity );
+		$stmt->bindParam ( ':price', $price );
+		foreach ( $jd->new_invoice_ship_tomorrow_list as $item ) {
+			$prodID = $item->itemid;
+			$unitID = $item->unitid;
+			$quantity = round ( $item->shipquantity, 2 );
+			$price = sprintf ( '%0.2f', $item->price );
+			$stmt->execute ();
+		}
+		unset ( $stmt );
+
+		// Make it live
+		$stmt = $dbh->prepare ( "UPDATE tblSale SET iLocationSourceID=1 WHERE iSaleID=:invoiceNum" );
+		$stmt->bindParam ( ':invoiceNum', $saleID );
+		$stmt->execute ();
+		unset ( $stmt );
+
+		$dbh = null;
+	} catch ( PDOException $e ) {
+		$eMessage = $e->getMessage ();
+		$errMsg .= $e->getFile () . ' (' . $e->getLine () . ')' . $eMessage;
+		SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
+		dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
+		$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
+		echo $badXML;
+		exit ();
+	}
 }
 
 // Call sendinvoices.php with the invoice list to generate the PDFs and send them out for non-PRINTED INVOICE

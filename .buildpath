@@ -3,5 +3,6 @@
 	<buildpathentry combineaccessrules="false" kind="prj" path="/includes"/>
 	<buildpathentry external="true" kind="lib" path="C:/PHP/includes"/>
 	<buildpathentry kind="con" path="org.eclipse.php.core.LANGUAGE"/>
+	<buildpathentry combineaccessrules="false" kind="prj" path="/EDI_SP"/>
 	<buildpathentry kind="src" path=""/>
 </buildpath>

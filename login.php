@@ -10,11 +10,14 @@ $badXML = <<< EOT
 </loginresponse>
 EOT;
 
+// Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
+$codeStr = generateRandomCode ( 6 );
+
 // Get the POST data
 if (isset ( $_POST ['jsondata'] )) {
-	dartLogging ( $currentScript, "jsondata=" . $_POST ['jsondata'] . " : " . $_SERVER ['REMOTE_ADDR'] . " : " . $_SERVER ['HTTP_USER_AGENT'] );
+	dartLogging ( $currentScript, "jsondata=" . $_POST ['jsondata'] . " : " . $_SERVER ['REMOTE_ADDR'] . " : " . $_SERVER ['HTTP_USER_AGENT'], $codeStr );
 } else {
-	dartLogging ( $currentScript, "    jsondata is FALSE or NULL : " . $_SERVER ['REMOTE_ADDR'] . " : " . $_SERVER ['HTTP_USER_AGENT'] );
+	dartLogging ( $currentScript, "    jsondata is FALSE or NULL : " . $_SERVER ['REMOTE_ADDR'] . " : " . $_SERVER ['HTTP_USER_AGENT'], $codeStr );
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : No jsondata supplied', $badXML );
 	echo $badXML;
 	exit ();
@@ -113,4 +116,6 @@ if ($result ['iUserID'] == DEBUG_USERID) {
 }
 $resultStr .= "</loginresponse>";
 echo $resultStr;
+dartLogging ( $currentScript, "  Success", $codeStr );
+exit ();
 ?>

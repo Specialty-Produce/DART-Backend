@@ -67,6 +67,12 @@ try {
 	$rsiID = ($result ['iRSIID'] > 0) ? $result ['iRSIID'] : 0;
 	$stmt->closeCursor ();
 
+	// Hula ID
+	$stmt = $dbh->query ( "SELECT iLocationID FROM tblDartInvoiceSendHula WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+	$result = $stmt->fetch ( PDO::FETCH_ASSOC );
+	$hulaID = ($result ['iLocationID'] > 0) ? $result ['iLocationID'] : 0;
+	$stmt->closeCursor ();
+
 	$dbh = null;
 } catch ( PDOException $e ) {
 	$errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $e->getMessage ();
@@ -458,9 +464,14 @@ if ($rsiID > 0) {
 	}
 	$mail->ClearAttachments ();
 	sleep ( 3 );
-	// unlink($rsiFile);
+	unlink($rsiFile);
 }
 $mail->ClearAllRecipients ();
+
+// Process Hula Invoices
+if ($hulaID > 0) {
+	$hulaFilenamePrefix = preg_replace ( '/[^a-zA-Z0-9_-]/', '',preg_replace ( '/\s/', '_',  $locInfo [$argv [1]] ['name']));
+}
 
 // Remove the PDFs
 sleep ( 5 );

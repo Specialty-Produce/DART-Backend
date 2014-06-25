@@ -10,6 +10,9 @@ $badXML = <<< EOT
 </driverinvoices_invoice_list>
 EOT;
 
+// Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
+$codeStr = generateRandomCode ( 6 );
+
 // User ID
 $userid = filter_input ( INPUT_POST, 'userid', FILTER_SANITIZE_NUMBER_INT );
 if ($userid == FALSE || is_null ( $userid )) {
@@ -18,7 +21,7 @@ if ($userid == FALSE || is_null ( $userid )) {
 	exit ();
 }
 
-dartLogging ( $currentScript, "userid=" . $userid );
+dartLogging ( $currentScript, "userid=" . $userid, $codeStr );
 
 try {
 	$dbh = new PDO ( 'spdb', '', '' );
@@ -62,7 +65,8 @@ try {
 $invoiceList = array ();
 foreach ( $routeInfo as $entry ) {
 	$lastUpdate = preg_replace ( '/(.*)\.\d{3}$/', '$1', $entry ['dtDartLastUpdated'] );
-	$invoiceList [$entry ['iSaleID']] = array ('saleID' => $entry ['iSaleID'], 'locID' => $entry ['iLocationDestinationID'], 'date' => strftime ( "%m/%d/%Y" ), 'lastupdate' => $lastUpdate, 'notes' => DART_escapeXmlString ( mb_convert_encoding ( $entry ['txtInvoiceNotes'], "UTF-8", "Windows-1252" ) ), 'po' => mb_convert_encoding ( $entry ['sPO'], "UTF-8", "Windows-1252" ), 'terms' => mb_convert_encoding ( $entry ['sTerms'], "UTF-8", "Windows-1252" ) );
+	$invoiceList [$entry ['iSaleID']] = array ('saleID' => $entry ['iSaleID'], 'locID' => $entry ['iLocationDestinationID'], 'date' => strftime ( "%m/%d/%Y" ), 'lastupdate' => $lastUpdate,
+			'notes' => DART_escapeXmlString ( mb_convert_encoding ( $entry ['txtInvoiceNotes'], "UTF-8", "Windows-1252" ) ), 'po' => mb_convert_encoding ( $entry ['sPO'], "UTF-8", "Windows-1252" ), 'terms' => mb_convert_encoding ( $entry ['sTerms'], "UTF-8", "Windows-1252" ));
 	$invoiceList [$entry ['iSaleID']] ['items'] = array ();
 }
 
@@ -72,26 +76,15 @@ foreach ( $invInfo as $item ) {
 	// Add the line pricing info
 	if (! isset ( $priceList [$item ['iSaleDetailID']] ))
 		$priceList [$item ['iSaleDetailID']] = array ();
-	$priceList [$item ['iSaleDetailID']] [$item ['iUnitID']] = array ('desc' => mb_convert_encoding ( $item ['UnitDescription'], "UTF-8", "Windows-1252" ), 'cost' => $item ['mUnitPrice'] );
+	$priceList [$item ['iSaleDetailID']] [$item ['iUnitID']] = array ('desc' => mb_convert_encoding ( $item ['UnitDescription'], "UTF-8", "Windows-1252" ), 'cost' => $item ['mUnitPrice']);
 	// Only add to the invoice the actual unitID set items
 	if ($item ['iInvoiceDefault'] == 1)
-		$invoiceList [$item ['iSaleID']] ['items'] [] = array ('lineid' => $item ['iSaleDetailID'], 'prodid' => $item ['iProductID'], 'proddesc' => mb_convert_encoding ( $item ['sDescription'], "UTF-8", "Windows-1252" ), 'unitid' => $item ['iUnitID'], 'qorder' => $item ['fOrderQuantity'], 'qship' => $item ['fShipQuantity'], 'status' => $item ['iShort'], 'itemspec' => DART_escapeXmlString ( mb_convert_encoding ( $item ['sItemNotes'], "UTF-8", "Windows-1252" ) ) );
+		$invoiceList [$item ['iSaleID']] ['items'] [] = array ('lineid' => $item ['iSaleDetailID'], 'prodid' => $item ['iProductID'], 'proddesc' => mb_convert_encoding ( $item ['sDescription'], "UTF-8", "Windows-1252" ), 'unitid' => $item ['iUnitID'], 'qorder' => $item ['fOrderQuantity'],
+				'qship' => $item ['fShipQuantity'], 'status' => $item ['iShort'], 'itemspec' => DART_escapeXmlString ( mb_convert_encoding ( $item ['sItemNotes'], "UTF-8", "Windows-1252" ) ));
 }
 /*
-echo "<pre>\n";
-echo "ROUTEINFO\n";
-print_r($routeInfo);
-echo "\n-----------------------------------------------------------------\n";
-echo "INVINFO\n";
-print_r($invInfo);
-echo "\n-----------------------------------------------------------------\n";
-echo "PRICELIST\n";
-print_r($priceList);
-echo "\n-----------------------------------------------------------------\n";
-echo "INVOICELIST\n";
-print_r($invoiceList);
-echo "</pre>\n";
-*/
+ * echo "<pre>\n"; echo "ROUTEINFO\n"; print_r($routeInfo); echo "\n-----------------------------------------------------------------\n"; echo "INVINFO\n"; print_r($invInfo); echo "\n-----------------------------------------------------------------\n"; echo "PRICELIST\n"; print_r($priceList); echo "\n-----------------------------------------------------------------\n"; echo "INVOICELIST\n"; print_r($invoiceList); echo "</pre>\n";
+ */
 
 // Generate the XML
 $resultStr = '<?xml version="1.0"?>' . "\n";
@@ -99,5 +92,6 @@ $resultStr .= '<driverinvoices_invoice_list status="success">' . "\n";
 include 'include/invoiceXML.php';
 $resultStr .= "</driverinvoices_invoice_list>";
 echo $resultStr;
+dartLogging ( $currentScript, "  Success", $codeStr );
 exit ();
 ?>
