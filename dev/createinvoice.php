@@ -26,14 +26,14 @@ if (isset($_POST['ciSubmit'])) {
     		$dbh->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
     		// Get the prodList
-    		$stmt = $dbh->query("uspWebOOOrderForm " . $_POST['locationSel'] . ", " . $currentCatalog);
+    		$stmt = $dbh->query("uspWebOOOrderForm " . $_POST['locationSel'] . ", " . $currentCatalog . ", 0");
     		foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
     			$prodID = $row['iProductID'];
     			$prodList[$prodID] = array('description'=>$row['sCustFieldDesc'], 'unavailable'=>($row['iUnavailable'] > 0 ? true : false), 'reason'=>$row['sReason'], 'firstRead'=>true, 'units'=>array());
     			$prodList[$prodID]['defaultUnitSet'] = false;
     		}
     		$stmt->closeCursor();
-    		
+
     		// Get the units
     		$stmt = $dbh->query("uspWebOOProfilePrice " . $_POST['locationSel'] . ", " . $currentCatalog);
     		foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
@@ -50,10 +50,10 @@ if (isset($_POST['ciSubmit'])) {
     					}
     				}
     			}
-    			
+
     		}
     		$stmt->closeCursor();
-    		
+
     		// Generate the invoice
     		$invoice = array();
     		for ($i = 0 ; $i < $numItems ; $i++) {
@@ -63,17 +63,17 @@ if (isset($_POST['ciSubmit'])) {
     			}
     			$invoice[$itemID] = array('unitID'=>array_rand($prodList[$itemID]['units'], 1), 'quantity'=>rand(1, 5));
     		}
-    		
+
     		// Get a new invoice number
 			$stmt = $dbh->query ( "uspWebOOGetInvoiceNumber " . $_POST['locationSel'] . ", '" . date('n/j/Y') . "'" );
 			foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
 				$saleID = $row ['iSaleID'];
 			}
 			$stmt->closeCursor ();
-			
+
 			// Begin the transaction to atomize the update.
 			$dbh->beginTransaction( );
-			
+
 			// Define/init bindParam variables
 			$notes = '';
 			$prodID = 0;
@@ -85,22 +85,22 @@ if (isset($_POST['ciSubmit'])) {
 			$discPerc = 0.0;
 			$discDoll = 0.0;
 			$discOT = 0.0;
-			
+
 			// Get the driver assigned
 			$stmt = $dbh->prepare("UPDATE tblSale SET iDriverID=:driverID WHERE iSaleID=:invoiceNum");
 			$stmt->bindParam(':driverID', $_POST['driverSel']);
 			$stmt->bindParam(':invoiceNum', $saleID);
 			$stmt->execute( );
-			
-			$stmt = $dbh->prepare("INSERT INTO tblSaleDetail 
-							(iSaleID, iProductID, iUnitID, fOrderQuantity, fShipQuantity, 
-							mUnitPrice, sItemNotes, iShort, iPurchaseFrom, iFilled, 
-							iFilledPurchase, iAddItem, fDiscount, fDiscountCategory, mDiscountCategory, 
-							iOnlineOrderItem, fDiscountOnTime, fCorporateDiscount, iOOCatalogID) 
-							VALUES 
-							(:invoiceNum, :prodID, :unitID, :quantityOrd, :quantityShip, 
-							:price, :notes, 0, 0, 0, 
-							0, 0, 0.0, 0.0, 0, 
+
+			$stmt = $dbh->prepare("INSERT INTO tblSaleDetail
+							(iSaleID, iProductID, iUnitID, fOrderQuantity, fShipQuantity,
+							mUnitPrice, sItemNotes, iShort, iPurchaseFrom, iFilled,
+							iFilledPurchase, iAddItem, fDiscount, fDiscountCategory, mDiscountCategory,
+							iOnlineOrderItem, fDiscountOnTime, fCorporateDiscount, iOOCatalogID)
+							VALUES
+							(:invoiceNum, :prodID, :unitID, :quantityOrd, :quantityShip,
+							:price, :notes, 0, 0, 0,
+							0, 0, 0.0, 0.0, 0,
 							1, 0.0, 0, :catalogID)");
 			$stmt->bindParam(':invoiceNum', $saleID);
 			$stmt->bindParam(':prodID', $prodID);
@@ -110,7 +110,7 @@ if (isset($_POST['ciSubmit'])) {
 			$stmt->bindParam(':price', $price);
 			$stmt->bindParam(':notes', $notes);
 			$stmt->bindParam(':catalogID', $currentCatalog);
-			
+
 			foreach ( $invoice as $prodID => $entry ) {
 				$unitID = $entry['unitID'];
 				$quantityOrd = $entry['quantity'];
@@ -119,12 +119,12 @@ if (isset($_POST['ciSubmit'])) {
 				$stmt->execute( );
 			}
 			unset($stmt);
-			
+
 			// Finally, change the iLocationSourceID from 2 to 1 to make the invoice live!
 			$stmt = $dbh->prepare("UPDATE tblSale SET iLocationSourceID=1 WHERE iSaleID=:invoiceNum");
 			$stmt->bindParam(':invoiceNum', $saleID);
 			$stmt->execute( );
-	
+
 			// Commit the statements.  If something fails, it will be rolled back...
 			$result = $dbh->commit( );
 

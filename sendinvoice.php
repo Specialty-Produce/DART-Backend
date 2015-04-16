@@ -4,6 +4,8 @@ include 'dart_init.php';
 $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 require ('classes_SP/class_invoicePDF.php');
 require ('classes_SP/class_InvoiceRSI.php');
+// Hula Software became Restuarant Matrix - I changed the FTP folder but otherwise left the Hula naming scheme
+require ('classes_SP/class_InvoiceHula.php');
 require_once 'EDI_SP.php';
 require ('classes_SP/class_SP_FTP.php');
 require ('class.phpmailer.php');
@@ -36,7 +38,8 @@ try {
 		$ediID = trim ( $row ['sInterchangeID'] );
 		$POnumber = trim ( $row ['sPO'] );
 		if (strlen ( $ediID ) > 0 && strlen ( $POnumber ) == 0) {
-			if (constant ( 'EDISPConsts::' . $ediID . "_REQUIREPO" )) {
+			$requireEDIPO = constant ( 'EDISPConsts::' . $ediID . "_REQUIREPO" );
+			if ($requireEDIPO != null) {
 				$POnumber = 'SP-' . date ( 'ymdHi' ) . '-' . sprintf ( "%02d", $offLinePOcount );
 				$offLinePOs [$row ['iSaleID']] = $POnumber;
 				$offLinePOcount ++;
@@ -431,9 +434,9 @@ $mail->ClearAllRecipients ();
 // Process RSI Invoices
 if ($rsiID > 0) {
 	$rsiLocationName = $locInfo [$argv [1]] ['name'];
-	//$rsiMailtoAddress = "xtophersd@yahoo.com";
+	// $rsiMailtoAddress = "xtophersd@yahoo.com";
 	$rsiMailtoAddress = $rsiID . "@restacct.com";
-	$rsiFilename = preg_replace ( '/[^a-zA-Z0-9]/', '',  $rsiLocationName) . '_' . date ( 'Ymd_Hi' ) . '.txt';
+	$rsiFilename = preg_replace ( '/[^a-zA-Z0-9]/', '', $rsiLocationName ) . '_' . date ( 'Ymd_Hi' ) . '.txt';
 	$rsiFile = DART_RSI_DIR . $rsiFilename;
 	$rsiFH = fopen ( $rsiFile, "w" );
 	foreach ( $locInfo as $loc ) {
@@ -456,7 +459,7 @@ if ($rsiID > 0) {
 	$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
 	$mail->AddAttachment ( $rsiFile, $rsiFilename );
 	// Add the body
-	$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " .$rsiLocationName . "\n - Specialty Produce System";
+	$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " . $rsiLocationName . "\n - Specialty Produce System";
 	// Send the email
 	if (! $mail->Send ()) {
 		$errMsg = "RSI : Send mail error : " . $rsiMailtoAddress;
@@ -464,16 +467,33 @@ if ($rsiID > 0) {
 	}
 	$mail->ClearAttachments ();
 	sleep ( 3 );
-	unlink($rsiFile);
+	unlink ( $rsiFile );
 }
 $mail->ClearAllRecipients ();
 
 // Process Hula Invoices
 if ($hulaID > 0) {
-	$hulaFilenamePrefix = preg_replace ( '/[^a-zA-Z0-9_-]/', '',preg_replace ( '/\s/', '_',  $locInfo [$argv [1]] ['name']));
+	$hulaFilenamePrefix = preg_replace ( '/[^a-zA-Z0-9_-]/', '', preg_replace ( '/\s/', '_', $locInfo [$argv [1]] ['name'] ) );
+	foreach ( $locInfo as $loc ) {
+		$invHula = new InvoiceHula ();
+		try {
+			$invHula->retrieveInvoice ( $loc ['saleID'] );
+			$hulaFile = DART_HULA_DIR . $hulaFilenamePrefix . "_" . $loc ['saleID'] . ".txt";
+			$hulaFH = fopen ( $hulaFile, "w" );
+			fwrite ( $hulaFH, $invHula->generateHulaOutput () );
+			fclose ( $hulaFH );
+		} catch ( SP_Exception $spe ) {
+			$errMsg = "Hula : Retrieve invoice error : " . $spe->getMessage ();
+			SP_errorLogging ( $errMsg, true, '', $currentScript . " - Hula error" );
+			continue;
+		}
+	}
 }
 
 // Remove the PDFs
+// Do not remove the PDF files, we're going to let them stay for 90 days and delete them with a Scheduled Task
+/*
+
 sleep ( 5 );
 foreach ( array_keys ( $locInfo ) as $invNum ) {
 	$outFile = DART_PDF_DIR . $invNum . ".pdf";
@@ -482,6 +502,8 @@ foreach ( array_keys ( $locInfo ) as $invNum ) {
 		SP_errorLogging ( $errMsg, true, '', $currentScript . " - unlink error" );
 	}
 }
+
+*/
 
 exit ( 0 );
 ?>

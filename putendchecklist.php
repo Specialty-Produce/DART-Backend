@@ -10,6 +10,12 @@ $badXML = <<< EOT
 </putendchecklist>
 EOT;
 
+$resultXML = <<< EOT
+<?xml version="1.0"?>
+<putendchecklist status="success">
+</putendchecklist>
+EOT;
+
 // Get the POST data
 if (isset ( $_POST ['jsondata'] )) {
 	$appJSON = $_POST ['jsondata'];
@@ -49,7 +55,9 @@ if ($dartSession == FALSE || is_null ( $dartSession )) {
 $checklistJSON = $jd->cljson;
 if ($checklistJSON == FALSE || is_null ( $checklistJSON )) {
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : No checklist data', $badXML );
-	echo $badXML;
+	//echo $badXML;
+	echo $resultXML;
+	dartLogging ( $currentScript, "No checklist data - faked success");
 	exit ();
 }
 $clInfo = json_decode ( $checklistJSON );
@@ -61,13 +69,13 @@ $templogJSON = json_decode ( $jd->templogjson );
 try {
 	$dbh = new PDO ( 'spdb', '', '' );
 	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-	
+
 	$odoValue = ($clInfo->odometer > 0) ? $clInfo->odometer : 0;
 	$sqlds = "uspDARTTruckDataEnd $dartSession, " . $odoValue;
 	$stmt = $dbh->query ( $sqlds );
 	$dataresult = $stmt->fetch ( PDO::FETCH_ASSOC );
 	$stmt->closeCursor ();
-	
+
 	$itemCount = 0;
 	$clXML = "<ROOT>";
 	foreach ( $clInfo->test_items as $item ) {
@@ -87,10 +95,10 @@ try {
 		$stmt->closeCursor ();
 		$clresult = count ( $result );
 	}
-	
+
 	// Close out the session
 	$result = $dbh->exec ( "uspDARTInvoicesAssignEnd $dartSession" );
-	
+
 	// Temperature logs
 	if (count ( $templogJSON ) > 0) {
 		$startTemp = $templogJSON [0]->temperature;
@@ -105,7 +113,7 @@ try {
 		$sqltl = "uspDARTTemperatureLog $dartSession, $startTemp, '" . $tlXML . "'";
 		$result = $dbh->exec ( $sqltl );
 	}
-	
+
 	$dbh = null;
 } catch ( PDOException $e ) {
 	$errMsg = $e->getFile () . ' (' . $e->getLine () . ')' . $e->getMessage ();
@@ -127,11 +135,6 @@ if ($dataresult['Identity'] === false || $clresult != $itemCount) {
 }
 */
 
-$resultXML = <<< EOT
-<?xml version="1.0"?>
-<putendchecklist status="success">
-</putendchecklist>
-EOT;
 echo $resultXML;
 exit ();
 ?>

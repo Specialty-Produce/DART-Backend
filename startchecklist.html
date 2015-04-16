@@ -53,9 +53,10 @@ function encode_form() {
 
 	// Test comments
 	evStr += "'comments':'" + encodeURIComponent(document.clform.comments.value) + "'}";
-        
+
     eval(evStr);
     var encStr = JSON.stringify(encData);
+    document.getElementById('encodeDiv').innerHTML = encStr;
     return encStr;
 }
 function getodometer() {
@@ -88,9 +89,10 @@ function chkNumeric(strString) {
 </head>
 <body>
 <form action="" method="post" name="clform">
-1. Which vehicle are you using? 
+1. Which vehicle are you using?
 	<select name="vehicle">
 		<option value="0:0:0">Select...</option>
+		<option value="22:0:1">Personal Vehicle</option>
 		<option value="1:0:1000">Truck 1</option>
 		<option value="2:0:1000">Truck 2</option>
 		<option value="3:0:1000">Truck 3</option>
@@ -245,5 +247,6 @@ function chkNumeric(strString) {
 <br/>
 <button onclick="validate_form(); return false;">Validate</button>&nbsp;&nbsp;<button onclick="encode_form(); return false;">Encode</button>
 </form>
+<div id="encodeDiv"></div>
 </body>
 </html>

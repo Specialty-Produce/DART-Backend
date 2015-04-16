@@ -19,6 +19,7 @@ if ($ip_number < 1185397282 || $ip_number > 1185397309) {
 }
 
 $userid = filter_input ( INPUT_GET, 'u', FILTER_VALIDATE_INT );
+$userid = DEBUG_USERID;
 if ($userid == FALSE || is_null ( $userid )) {
 	echo "No user ID provided...";
 	exit ();
