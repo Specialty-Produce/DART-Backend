@@ -10,6 +10,8 @@ require_once 'EDI_SP.php';
 require ('classes_SP/class_SP_FTP.php');
 require ('class.phpmailer.php');
 
+$debugBCC = false;
+
 // Get the information on the location associated with these invoices
 $locInfo = array ();
 $sendEmails = array ();
@@ -75,6 +77,13 @@ try {
 	$result = $stmt->fetch ( PDO::FETCH_ASSOC );
 	$hulaID = ($result ['iLocationID'] > 0) ? $result ['iLocationID'] : 0;
 	$stmt->closeCursor ();
+
+	// Profit Pro Plus
+	$stmt = $dbh->query ( "SELECT iLocationID, tEmails FROM tblDartInvoiceSendProfitProPlus WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+	$result = $stmt->fetch ( PDO::FETCH_ASSOC );
+	$pppEmails = ($result ['iLocationID'] > 0) ? explode ( ',', $result ['tEmails'] ) : array ();
+	$stmt->closeCursor ();
+	$pppEmails = array();
 
 	$dbh = null;
 } catch ( PDOException $e ) {
@@ -236,6 +245,8 @@ EOT;
 
 	// Send the emails
 	$badEmails = array ();
+	if ($debugBCC)
+		$mail->AddBCC ( "xtopherinsd@yahoo.com", "Christopher" );
 	foreach ( $sendEmails as $entry ) {
 		if (strlen ( $entry ['email'] ) > 0) {
 			fwrite ( $fp, " " . $entry ['email'] );
@@ -249,6 +260,7 @@ EOT;
 					$sendCount ++;
 				}
 				$mail->ClearAddresses ();
+				$mail->ClearBCCs ();
 			}
 		}
 	}
@@ -326,8 +338,9 @@ foreach ( $locInfo as $loc ) {
 				$mail->AddCC = "christopher@specialtyproduce.com";
 				$mail->Subject = $subjectStr;
 				$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
-				// $mail->AddBCC ( "christopher@specialtyproduce.com", "Christopher Cilley" );
-				// Add the PDFs
+				if ($debugBCC)
+					$mail->AddBCC ( "christopher@specialtyproduce.com", "Christopher Cilley" );
+					// Add the PDFs
 				$mail->AddAttachment ( DART_PDF_DIR . $saleID . ".pdf", "$saleID.pdf" );
 				// Add the body
 				$mail->Body = <<< EOT
@@ -358,6 +371,7 @@ EOT;
 					$mail->ClearAddresses ();
 				}
 				$mail->ClearAttachments ();
+				$mail->ClearBCCs ();
 				fwrite ( $fp, "(" . $sendCount . ")\n" );
 				fclose ( $fp );
 			}
@@ -454,7 +468,8 @@ if ($rsiID > 0) {
 	$mail->FromName = "Specialty Produce Accounting";
 	$mail->From = "ar@specialtyproduce.com";
 	$mail->AddAddress ( $rsiMailtoAddress );
-	// $mail->AddBCC("christopher@specialtyproduce.com");
+	if ($debugBCC)
+		$mail->AddBCC ( "christopher@specialtyproduce.com" );
 	$mail->Subject = "Specialty Produce Imported Invoice";
 	$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
 	$mail->AddAttachment ( $rsiFile, $rsiFilename );
@@ -466,6 +481,7 @@ if ($rsiID > 0) {
 		SP_errorLogging ( $errMsg, true, '', $currentScript . " - RSI error" );
 	}
 	$mail->ClearAttachments ();
+	$mail->ClearBCCs ();
 	sleep ( 3 );
 	unlink ( $rsiFile );
 }
@@ -490,20 +506,52 @@ if ($hulaID > 0) {
 	}
 }
 
+// Process Profit Pro Plus Invoices
+if (count ( $pppEmails ) > 0) {
+	$pppLocationName = $locInfo [$argv [1]] ['name'];
+	$rsiMailtoAddress = $rsiID . "@restacct.com";
+	$rsiFilename = preg_replace ( '/[^a-zA-Z0-9]/', '', $rsiLocationName ) . '_' . date ( 'Ymd_Hi' ) . '.txt';
+	$rsiFile = DART_RSI_DIR . $rsiFilename;
+	$rsiFH = fopen ( $rsiFile, "w" );
+	foreach ( $locInfo as $loc ) {
+		$invPPP = new InvoiceProfitProPlus ();
+		try {
+			$invPPP->retrieveInvoice ( $loc ['saleID'] );
+			fwrite ( $rsiFH, $invRSI->generateRSIOutput () );
+		} catch ( SP_Exception $spe ) {
+			$errMsg = "RSI : Retrieve invoice error : " . $spe->getMessage ();
+			SP_errorLogging ( $errMsg, true, '', $currentScript . " - RSI error" );
+			continue;
+		}
+	}
+	fclose ( $rsiFH );
+	$mail->FromName = "Specialty Produce Accounting";
+	$mail->From = "ar@specialtyproduce.com";
+	$mail->AddAddress ( $rsiMailtoAddress );
+	if ($debugBCC)
+		$mail->AddBCC ( "christopher@specialtyproduce.com" );
+	$mail->Subject = "Specialty Produce Imported Invoice";
+	$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
+	$mail->AddAttachment ( $rsiFile, $rsiFilename );
+	// Add the body
+	$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " . $rsiLocationName . "\n - Specialty Produce System";
+	// Send the email
+	if (! $mail->Send ()) {
+		$errMsg = "RSI : Send mail error : " . $rsiMailtoAddress;
+		SP_errorLogging ( $errMsg, true, '', $currentScript . " - RSI error" );
+	}
+	$mail->ClearAttachments ();
+	$mail->ClearBCCs ();
+	sleep ( 3 );
+	unlink ( $rsiFile );
+}
+$mail->ClearAllRecipients ();
+
 // Remove the PDFs
 // Do not remove the PDF files, we're going to let them stay for 90 days and delete them with a Scheduled Task
 /*
-
-sleep ( 5 );
-foreach ( array_keys ( $locInfo ) as $invNum ) {
-	$outFile = DART_PDF_DIR . $invNum . ".pdf";
-	if (! unlink ( $outFile )) {
-		$errMsg = "Error unlinking $outFile\nfor invoice # " . $loc ['saleID'];
-		SP_errorLogging ( $errMsg, true, '', $currentScript . " - unlink error" );
-	}
-}
-
-*/
+ * sleep ( 5 ); foreach ( array_keys ( $locInfo ) as $invNum ) { $outFile = DART_PDF_DIR . $invNum . ".pdf"; if (! unlink ( $outFile )) { $errMsg = "Error unlinking $outFile\nfor invoice # " . $loc ['saleID']; SP_errorLogging ( $errMsg, true, '', $currentScript . " - unlink error" ); } }
+ */
 
 exit ( 0 );
 ?>

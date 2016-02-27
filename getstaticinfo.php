@@ -43,6 +43,11 @@ try {
 	$driverList = $stmt->fetchAll ( PDO::FETCH_BOTH );
 	$stmt->closeCursor ();
 
+	$sql = "uspDARTVehicleList";
+	$stmt = $dbh->query ( $sql );
+	$vehicleList = $stmt->fetchAll ( PDO::FETCH_BOTH );
+	$stmt->closeCursor ();
+
 	// TODO : Get message addresses
 
 	$dbh = null;
@@ -82,6 +87,13 @@ foreach ( $driverList as $entry ) {
 }
 $resultStr .= "</driver_entry_list>\n";
 $resultStr .= "<webservicefilesavedays>5</webservicefilesavedays>\n";
+
+$resultStr .= '<vehicle_entry_list infoname="vehicles">' . "\n";
+foreach ($vehicleList as $vehicle) {
+	$resultStr .= '		<entry id="' . $vehicle['iTruckID'] . '">' . $vehicle['iRefrigerated'] . ':' . $vehicle['iOdometer'] . '">' . $vehicle['sDescription'] . "</option>\n";
+}
+$resultStr .= "</driver_entry_list>\n";
+
 $resultStr .= "</staticinfo>";
 echo $resultStr;
 dartLogging ( $currentScript, "  Success", $codeStr );

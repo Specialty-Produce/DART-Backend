@@ -21,7 +21,7 @@ $successXML = <<< EOT
 </crashreporter>
 EOT;
 
-// dartLogging ( $currentScript, "post=" . print_r($_POST, true), $codeStr );
+dartLogging ( $currentScript, "post=" . print_r($_POST, true), $codeStr );
 
 // Get the POST data
 // iPad Name
@@ -71,6 +71,7 @@ $mail->SMTPAuth = false;
 $mail->FromName = "Specialty Produce DART";
 $mail->From = "itadmin@specialtyproduce.com";
 $mail->AddAddress ( "terry.ace.sp2@gmail.com", "Terry Grossman" );
+$mail->AddAddress ( "jasonc@specialtyproduce.com", "Jason Cronje" );
 $mail->AddCC ( "christopher@specialtyproduce.com", "Christopher Cilley" );
 $mail->Body = "Crash report attached.";
 

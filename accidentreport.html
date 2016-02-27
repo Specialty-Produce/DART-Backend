@@ -45,32 +45,33 @@ function validate_form() {
 	// Insurance info
 	if (document.accform.insuranceco.value == '') errStr = errStr + "\\u2022 Insurance company name.\\n";
 	if (document.accform.policynum.value == '') errStr = errStr + "\\u2022 Insurance policy number.\\n";
-	if (errStr == '') alert("Success"); //return 'success';
-	else alert("Error: " + errStr); //return errStr;
+	if (errStr == '') alert('success');
+	else alert(errStr);
+	return 'success';
 }
 function encode_form() {
 	// Accident info
 	var evStr = "encData = {'numvehicles':'" + document.accform.numvehicles.value + "',";
-	evStr += "'location':'" + document.accform.location.value + "',";
+	evStr += "'location':'" + document.accform.location.value.replace(/'/g, '\\\'') + "',";
 	evStr += "'privateprop':'" + getRadioValue(document.accform.elements['privateprop']) + "',";
-	evStr += "'time':'" + document.accform.time.value + "',";
+	evStr += "'time':'" + document.accform.time.value.replace(/'/g, '\\\'') + "',";
 	evStr += "'time12h':'" + getRadioValue(document.accform.elements['time12h']) + "',";
 	evStr += "'activity':'" + getRadioValue(document.accform.elements['activity']) + "',";
-	evStr += "'drivername':'" + document.accform.drivername.value + "',";
-	evStr += "'driverlicense':'" + document.accform.driverlicense.value + "',";
-	evStr += "'driveraddress':'" + document.accform.driveraddress.value + "',";
-	evStr += "'drivercity':'" + document.accform.drivercity.value + "',";
-	evStr += "'driverstate':'" + document.accform.driverstate.value + "',";
-	evStr += "'driverzip':'" + chkNumeric(document.accform.driverzip.value) + "',";
-	evStr += "'phoneareawork':'" + chkNumeric(document.accform.phoneareawork.value) + "',";
-	evStr += "'phonework':'" + chkNumeric(document.accform.phonework.value) + "',";
-	evStr += "'phoneareahome':'" + chkNumeric(document.accform.phoneareahome.value) + "',";
-	evStr += "'phonehome':'" + chkNumeric(document.accform.phonehome.value) + "',";
-	evStr += "'vehiclemake':'" + document.accform.vehiclemake.value + "',";
-	evStr += "'vehicleplate':'" + document.accform.vehicleplate.value + "',";
-	evStr += "'insuranceco':'" + document.accform.insuranceco.value + "',";
-	evStr += "'policynum':'" + document.accform.policynum.value + "',";
-	evStr += "'comments':'" + encodeURIComponent(document.accform.comments.value) + "'}";
+	evStr += "'drivername':'" + document.accform.drivername.value.replace(/'/g, '\\\'') + "',";
+	evStr += "'driverlicense':'" + document.accform.driverlicense.value.replace(/'/g, '\\\'') + "',";
+	evStr += "'driveraddress':'" + document.accform.driveraddress.value.replace(/'/g, '\\\'') + "',";
+	evStr += "'drivercity':'" + document.accform.drivercity.value.replace(/'/g, '\\\'') + "',";
+	evStr += "'driverstate':'" + document.accform.driverstate.value.replace(/'/g, '\\\'') + "',";
+	evStr += "'driverzip':'" + document.accform.driverzip.value.replace(/'/g, '\\\'') + "',";
+	evStr += "'phoneareawork':'" + document.accform.phoneareawork.value.replace(/'/g, '\\\'') + "',";
+	evStr += "'phonework':'" + document.accform.phonework.value.replace(/'/g, '\\\'') + "',";
+	evStr += "'phoneareahome':'" + document.accform.phoneareahome.value.replace(/'/g, '\\\'') + "',";
+	evStr += "'phonehome':'" + document.accform.phonehome.value.replace(/'/g, '\\\'') + "',";
+	evStr += "'vehiclemake':'" + document.accform.vehiclemake.value.replace(/'/g, '\\\'') + "',";
+	evStr += "'vehicleplate':'" + document.accform.vehicleplate.value.replace(/'/g, '\\\'') + "',";
+	evStr += "'insuranceco':'" + document.accform.insuranceco.value.replace(/'/g, '\\\'') + "',";
+	evStr += "'policynum':'" + document.accform.policynum.value.replace(/'/g, '\\\'') + "',";
+	evStr += "'comments':'" + encodeURIComponent(document.accform.comments.value).replace(/'/g, '\\\'') + "'}";
     eval(evStr);
     var encStr = JSON.stringify(encData);
     alert(encStr);
@@ -144,7 +145,7 @@ function getRadioValue(radioObj) {
 <li>Driver's Work Phone? (<input type="number" name="phoneareawork" size="4"/>) <input type="number" name="phonework" size="10"/>&nbsp;&nbsp;<span style="font-size: 0.8em;">(xxx) xxxxxxx</span></li>
 <li>Driver's Home Phone? (<input type="number" name="phoneareahome" size="4"/>) <input type="number" name="phonehome" size="10"/></li>
 <li>Vehicle (Year and Make)? <input type="text" name="vehiclemake" size="30"/></li>
-<li>Vehicl License Plate of VIN? <input type="text" name="vehicleplate" size="30"/></li>
+<li>Vehicle License Plate of VIN? <input type="text" name="vehicleplate" size="30"/></li>
 <li>Insurance Company Name? <input type="text" name="insuranceco" size="40"/></li>
 <li>Policy Number? <input type="text" name="policynum" size="20"/><br/><br/></li>
 <li>Comments:<br/>

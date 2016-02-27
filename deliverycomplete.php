@@ -19,11 +19,15 @@ EOT;
 // Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
 $codeStr = generateRandomCode ( 6 );
 
+// TODO : CRC check
+// jsonCRC32
+
 // Get the POST data
 if (isset ( $_POST ['jsondata'] )) {
 	$appJSON = $_POST ['jsondata'];
 	// dartLogging ( $currentScript, "jsondata=" . (preg_replace ( '/(,"signatureimage":")[^"]+(","status")/', '$1 --- $2', $appJSON )), $codeStr );
 	dartLogging ( $currentScript, "jsondata=" . $appJSON, $codeStr );
+	//dartLogging ( $currentScript, "POST=" . print_r($_POST, true), $codeStr );
 } else {
 	$appJSON = false;
 }
@@ -369,6 +373,10 @@ if (count ( $jd->new_invoice_ship_today_list ) > 0) {
 		$stmt->execute ();
 		unset ( $stmt );
 
+		// Alert the salesperson
+		$sql = "uspEmailDARTGeneratedInvoice $saleID, 1, " . $jd->userid;
+		$alertResult = $dbh->exec($sql);
+
 		$dbh = null;
 	} catch ( PDOException $e ) {
 		$eMessage = $e->getMessage ();
@@ -425,6 +433,10 @@ if (count ( $jd->new_invoice_ship_tomorrow_list ) > 0) {
 		$stmt->bindParam ( ':invoiceNum', $saleID );
 		$stmt->execute ();
 		unset ( $stmt );
+
+		// Alert the salesperson
+		$sql = "uspEmailDARTGeneratedInvoice $saleID, 2, " . $jd->userid;
+		$alertResult = $dbh->exec($sql);
 
 		$dbh = null;
 	} catch ( PDOException $e ) {

@@ -51,6 +51,7 @@ try {
 	$dbh = new PDO ( 'spdb', '', '' );
 	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
 	// Get the driver route
+	$sql = "";
 	if ($userid == DEBUG_USERID) {
 		// Determine the Sync state
 		$sf = fopen ( "driverstate.txt", "r" );
@@ -62,17 +63,20 @@ try {
 			$saleStr .= ",$id";
 		// Get the route data
 		$debugRouteTable = ($state == "0") ? "tblDartDataDriverRoute" : "tblDartDataDriverRouteRsync";
-		$stmt = $dbh->query ( "select * from $debugRouteTable where iSaleID in ($saleStr) order by iLocationDestinationID" );
+		$sql = "select * from $debugRouteTable where iSaleID in ($saleStr) order by iLocationDestinationID";
+		$stmt = $dbh->query ( $sql );
 		$routeInfo = $stmt->fetchAll ( PDO::FETCH_BOTH );
 		$stmt->closeCursor ();
 		// Get the invoice data
 		$debugInvoiceTable = ($state == "0") ? "tblDartDataInvoices" : "tblDartDataInvoicesRsync";
-		$stmt = $dbh->query ( "select * from $debugInvoiceTable where iSaleID in ($saleStr) order by iLocationDestinationID, iSaleID, sDescription, iProductID" );
+		$sql = "select * from $debugInvoiceTable where iSaleID in ($saleStr) order by iLocationDestinationID, iSaleID, sDescription, iProductID";
+		$stmt = $dbh->query ( $sql );
 		$invInfo = $stmt->fetchAll ( PDO::FETCH_BOTH );
 		$stmt->closeCursor ();
 	} else {
 		// Get the route data
-		$stmt = $dbh->query ( "uspDARTGetDriverRoute $userid" );
+		$sql = "uspDARTGetDriverRoute $userid";
+		$stmt = $dbh->query ( $sql );
 		$routeInfo = $stmt->fetchAll ( PDO::FETCH_BOTH );
 		$stmt->closeCursor ();
 		// Prep for the XML version of invoice list for uspDARTGetInvoices
@@ -81,13 +85,15 @@ try {
 			$invXML .= '<Rec rID = "' . $id . '"/>' . "\n";
 		$invXML .= "</ROOT>\n";
 		// Get the invoice data
-		$stmt = $dbh->query ( "uspDARTGetInvoices '" . $invXML . "'" );
+		$sql = "uspDARTGetInvoices '" . $invXML . "'";
+		$stmt = $dbh->query ( $sql );
 		$invInfo = $stmt->fetchAll ( PDO::FETCH_BOTH );
 		$stmt->closeCursor ();
 	}
 	$dbh = null;
 } catch ( PDOException $e ) {
 	$errMsg = $e->getFile () . ' (' . $e->getLine () . ')' . $e->getMessage ();
+	$errMsg .= "\nSQL = $sql\n";
 	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
 	$badXML = preg_replace ( '/retry="false"/', 'retry="true"', $badXML );

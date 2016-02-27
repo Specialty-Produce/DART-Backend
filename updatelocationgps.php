@@ -88,7 +88,8 @@ $mail->SMTPAuth = false;
 $mail->FromName = "DART System";
 $mail->From = "itadmin@specialtyproduce.com";
 $mail->Subject = "Location GPS/Note Update";
-$mail->AddAddress ( "roger@specialtyproduce.com", "Roger Harrington" );
+$mail->AddCC ( "roger@specialtyproduce.com", "Roger Harrington" );
+$mail->AddAddress ( "damaris@specialtyproduce.com", "Damaris Jacobo" );
 
 $mail->Body = "A request to update a location's GPS information and/or Note has been submitted.\n\n";
 $mail->Body .= "Driver : $username\n";
