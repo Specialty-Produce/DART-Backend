@@ -22,7 +22,7 @@ if (isset ( $_POST ['jsondata'] )) {
 }
 */
 
-$jsondata = '{"password":"lamb","username":"paul,","udid":"7500077b1df5535132be9d4935fcf44e7b976f36","version":"Version 1.0 (Build 68)"}';
+$jsondata = '{"password":"meat","username":"jacksonc","udid":"7500077b1df5535132be9d4935fcf44e7b976f36","version":"Version 1.0 (Build 68)"}';
 
 // Decode the app data
 $jd = json_decode ( $jsondata );
@@ -58,7 +58,9 @@ try {
 	// set the error reporting attribute.
 	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
 	
-	$sql = "uspDARTLogin '$username', '$password', '$udid', '$version'";
+	// $sql = "uspDARTLogin '$username', '$password', '$udid', '$version', '$deviceName', '$token'";
+	
+	$sql = "uspDARTLogin '$username', '$password', '$udid', '$version', 'adhocDevice', 'abc123'";
 	$stmt = $dbh->query ( $sql );
 	$result = $stmt->fetch ( PDO::FETCH_ASSOC );
 	// Returns -1 on invalid username or password

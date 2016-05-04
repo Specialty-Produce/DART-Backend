@@ -27,7 +27,7 @@ if (isset ( $_POST ['jsondata'] )) {
 	$appJSON = $_POST ['jsondata'];
 	// dartLogging ( $currentScript, "jsondata=" . (preg_replace ( '/(,"signatureimage":")[^"]+(","status")/', '$1 --- $2', $appJSON )), $codeStr );
 	dartLogging ( $currentScript, "jsondata=" . $appJSON, $codeStr );
-	//dartLogging ( $currentScript, "POST=" . print_r($_POST, true), $codeStr );
+	// dartLogging ( $currentScript, "POST=" . print_r($_POST, true), $codeStr );
 } else {
 	$appJSON = false;
 }
@@ -91,14 +91,14 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 	// Convert the image to 24-bit and save
 	foreach ( $jd->deliveryjson->invoice_list as $invoice ) {
 		$file = $filedir . '/' . $invoice->saleid . ".png";
-
+		
 		// Create from the encoded string
 		if (! $imgSrc = imagecreatefromstring ( base64_decode ( $invoice->signatureimage ) )) {
 			$errMsg = "Could not create image from signatureimage data, saleID = " . $invoice->saleid . ", code = " . $codeStr;
 			SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 			dartLogging ( $currentScript, "    Could not create image from signatureimage data", $codeStr );
 			$badXML = preg_replace ( '/XXX/', $currentScript . ' : Could not create image from signatureimage data', $badXML );
-
+			
 			// Capture and clear repeating call **********
 			if ($invoice->saleid == 2510246) {
 				$badXML = $successXML;
@@ -112,7 +112,7 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 		}
 		$width = imagesx ( $imgSrc );
 		$height = imagesy ( $imgSrc );
-
+		
 		// Make the new image
 		if (! $imgDest = imagecreatetruecolor ( $width, $height )) {
 			dartLogging ( $currentScript, "    Could not create new true color image", $codeStr );
@@ -120,7 +120,7 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 			echo $badXML;
 			exit ();
 		}
-
+		
 		// Copy sent into new
 		if (! imagecopy ( $imgDest, $imgSrc, 0, 0, 0, 0, $width, $height )) {
 			dartLogging ( $currentScript, "    Could not copy source image to new image", $codeStr );
@@ -128,7 +128,7 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 			echo $badXML;
 			exit ();
 		}
-
+		
 		// Write it out
 		if (! imagepng ( $imgDest, $file )) {
 			dartLogging ( $currentScript, "    Could not save png image", $codeStr );
@@ -161,13 +161,13 @@ while ( $sqlFailed ) {
 	try {
 		$dbh = new PDO ( 'spdb', '', '' );
 		$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-
+		
 		// Prep for the XML version of invoice list for the stored procedure
 		$invXML = "<ROOT>\n";
 		foreach ( $jd->deliveryjson->invoice_list as $invoice )
 			$invXML .= '<Rec rID="' . $invoice->saleid . '" dtDelTime="' . $invoice->signtimestamp . '.000"/>' . "\n";
 		$invXML .= "</ROOT>";
-
+		
 		// Check if this is a repeat call to deliverycomplete.php
 		$repeatCall = false;
 		$sql = "uspDARTCheckDeliveryDate '" . $invXML . "'";
@@ -184,7 +184,7 @@ while ( $sqlFailed ) {
 			echo $successXML;
 			exit ();
 		}
-
+		
 		// Process any signer deletions
 		foreach ( $jd->deliveryjson->delivery->signerdeletion as $deletionEntry ) {
 			$sql = "uspDARTAddSigner " . $deletionEntry->signerid . ", $locationID, '', '', '', 4, ''";
@@ -194,7 +194,7 @@ while ( $sqlFailed ) {
 			dartLogging ( $currentScript, "    uspDARTAddSigner iUserID=" . $deletedID . " DELETED", $codeStr );
 			$stmt->closeCursor ();
 		}
-
+		
 		// First check to see if there is a signer
 		if ($signerID == 0) {
 			// Add the signer
@@ -226,7 +226,7 @@ while ( $sqlFailed ) {
 			$signerID = $result ['iUserID'];
 			$stmt->closeCursor ();
 		}
-
+		
 		// Get the last update time according to the database
 		$invTimesDB = array ();
 		$sql = "uspDARTCheckLastUpdate '" . $invXML . "'";
@@ -236,11 +236,11 @@ while ( $sqlFailed ) {
 			$invTimesDB [$row ['iSaleID']] = $lastUpdate;
 		}
 		$stmt->closeCursor ();
-
+		
 		// Now mark the invoice as "delivered"
 		$sql = "uspDARTDelivered $updateCode, $signerID, '" . $invXML . "'";
 		$resultDelivered = $dbh->exec ( $sql );
-
+		
 		// We need to build the list of invoices that have lastupdatetime values different between database and ipad
 		$updateAtDeliveryFailXML = '';
 		$saleDetailXML = '';
@@ -256,7 +256,7 @@ while ( $sqlFailed ) {
 				}
 			}
 		}
-
+		
 		// Now call the stored procedures, as needed, if my XML strings are not empty
 		$resultUpdateChanges = true;
 		if ($saleDetailXML != '') {
@@ -272,7 +272,7 @@ while ( $sqlFailed ) {
 			$sql = "uspDARTUpdateAtDeliveryFail '" . $updateAtDeliveryFailXML . "'";
 			$resultDeliveryFail = $dbh->exec ( $sql );
 		}
-
+		
 		$dbh = null;
 	} catch ( PDOException $e ) {
 		$errMsg = "SQL = $sql\n";
@@ -332,7 +332,7 @@ if (count ( $jd->new_invoice_ship_today_list ) > 0) {
 	try {
 		$dbh = new PDO ( 'spdb', '', '' );
 		$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-
+		
 		// Get an invoice number
 		$saleID = 0;
 		$sql = "uspWebOOGetInvoiceNumber " . $jd->deliveryjson->delivery->locationid . ", '" . date ( 'n/j/Y' ) . "'";
@@ -341,7 +341,7 @@ if (count ( $jd->new_invoice_ship_today_list ) > 0) {
 			$saleID = $row ['iSaleID'];
 		}
 		$stmt->closeCursor ();
-
+		
 		// Add the item to tblSaleDetail
 		$prodID = 0;
 		$unitID = 0;
@@ -365,18 +365,18 @@ if (count ( $jd->new_invoice_ship_today_list ) > 0) {
 			$stmt->execute ();
 		}
 		unset ( $stmt );
-
+		
 		// Make it live
 		$stmt = $dbh->prepare ( "UPDATE tblSale SET iLocationSourceID=1, sNotes='DART generated by the driver', iUserID=:userID WHERE iSaleID=:invoiceNum" );
 		$stmt->bindParam ( ':userID', $jd->userid );
 		$stmt->bindParam ( ':invoiceNum', $saleID );
 		$stmt->execute ();
 		unset ( $stmt );
-
+		
 		// Alert the salesperson
 		$sql = "uspEmailDARTGeneratedInvoice $saleID, 1, " . $jd->userid;
-		$alertResult = $dbh->exec($sql);
-
+		$alertResult = $dbh->exec ( $sql );
+		
 		$dbh = null;
 	} catch ( PDOException $e ) {
 		$eMessage = $e->getMessage ();
@@ -393,7 +393,7 @@ if (count ( $jd->new_invoice_ship_tomorrow_list ) > 0) {
 	try {
 		$dbh = new PDO ( 'spdb', '', '' );
 		$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-
+		
 		// Get an invoice number
 		$saleID = 0;
 		$sql = "uspWebOOGetInvoiceNumber " . $jd->deliveryjson->delivery->locationid . ", '" . date ( 'n/j/Y', strtotime ( "tomorrow" ) ) . "'";
@@ -402,7 +402,7 @@ if (count ( $jd->new_invoice_ship_tomorrow_list ) > 0) {
 			$saleID = $row ['iSaleID'];
 		}
 		$stmt->closeCursor ();
-
+		
 		// Add the item to tblSaleDetail
 		$prodID = 0;
 		$unitID = 0;
@@ -426,18 +426,18 @@ if (count ( $jd->new_invoice_ship_tomorrow_list ) > 0) {
 			$stmt->execute ();
 		}
 		unset ( $stmt );
-
+		
 		// Make it live
 		$stmt = $dbh->prepare ( "UPDATE tblSale SET iLocationSourceID=1, sNotes='DART generated by the driver', iUserID=:userID WHERE iSaleID=:invoiceNum" );
 		$stmt->bindParam ( ':userID', $jd->userid );
 		$stmt->bindParam ( ':invoiceNum', $saleID );
 		$stmt->execute ();
 		unset ( $stmt );
-
+		
 		// Alert the salesperson
 		$sql = "uspEmailDARTGeneratedInvoice $saleID, 2, " . $jd->userid;
-		$alertResult = $dbh->exec($sql);
-
+		$alertResult = $dbh->exec ( $sql );
+		
 		$dbh = null;
 	} catch ( PDOException $e ) {
 		$eMessage = $e->getMessage ();
@@ -455,7 +455,11 @@ if ($signerID != PRINTED_INVOICE_ID) {
 	$invoiceStr = '';
 	foreach ( $jd->deliveryjson->invoice_list as $invoice )
 		$invoiceStr .= " " . $invoice->saleid;
-	pclose ( popen ( "start /B php sendinvoice.php$invoiceStr", "r" ) );
+	if (phpversion () == "5.6.20") {
+		pclose ( popen ( "start /B C:\PROGRA~2\PHP\V56~1.20\php.exe sendinvoice.php$invoiceStr", "r" ) );
+	} else {
+		pclose ( popen ( "start /B php sendinvoice.php$invoiceStr", "r" ) );
+	}
 }
 
 echo $successXML;

@@ -6,9 +6,9 @@ require ('classes_SP/class_invoicePDF.php');
 require ('classes_SP/class_InvoiceRSI.php');
 require_once 'EDI_SP.php';
 require ('classes_SP/class_SP_FTP.php');
-require ('class.phpmailer.php');
+require ('PHPMailer5.2/PHPMailerAutoload.php');
 
-exit();
+exit ();
 
 // Get the information on the location associated with these invoices
 $locInfo = array ();
@@ -33,14 +33,14 @@ try {
 	$dbh = new PDO ( 'spdb', '', '' );
 	// set the error reporting attribute.
 	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-
+	
 	// The XML to get the invoice info
 	$invXML = "<ROOT>\n";
 	for($i = 1; $i < count ( $argv ); $i ++)
 		$invXML .= '<Rec rID="' . $argv [$i] . '"/>' . "\n";
 	$invXML .= "</ROOT>\n";
-	echo "\$invXML = " . htmlentities($invXML) . "\n";
-
+	echo "\$invXML = " . htmlentities ( $invXML ) . "\n";
+	
 	// Get the info
 	$stmt = $dbh->query ( "uspDARTSendInvoiceInfo '" . $invXML . "'" );
 	foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
@@ -58,30 +58,30 @@ try {
 			}
 		}
 		$showProdID = ($row ['iShowProductID'] == - 1) ? true : false;
-		$locInfo [$row ['iSaleID']] = array ('id' => $row ['iLocationDestinationID'], 'saleID' => $row ['iSaleID'], 'name' => $row ['sDescription'], 'address' => $row ['sAddress1'], 'city' => $row ['sCity'], 'state' => $row ['sState'], 'zip' => $row ['sPostalCode'], 'phone' => $row ['sPhone'],
-				'salesperson' => $row ['txtSalesPerson'], 'salesphone' => $row ['txtCellPhone'], 'salesemail' => $row ['txtSalesEmail'], 'terms' => $row ['sTerms'], 'po' => $POnumber, 'darkstop' => $isDarkStop, 'signer' => $row ['txtSigner'], 'shipdate' => $shipDate, 'deldate' => $deliveryDate,
+		$locInfo [$row ['iSaleID']] = array ('id' => $row ['iLocationDestinationID'], 'saleID' => $row ['iSaleID'], 'name' => $row ['sDescription'], 'address' => $row ['sAddress1'], 'city' => $row ['sCity'], 'state' => $row ['sState'], 'zip' => $row ['sPostalCode'], 'phone' => $row ['sPhone'], 
+				'salesperson' => $row ['txtSalesPerson'], 'salesphone' => $row ['txtCellPhone'], 'salesemail' => $row ['txtSalesEmail'], 'terms' => $row ['sTerms'], 'po' => $POnumber, 'darkstop' => $isDarkStop, 'signer' => $row ['txtSigner'], 'shipdate' => $shipDate, 'deldate' => $deliveryDate, 
 				'greenYTD' => $row ['mYTD'], 'ediID' => $ediID, 'showProdID' => $showProdID);
 	}
 	$stmt->closeCursor ();
-
+	
 	// Get the emails
 	$stmt = $dbh->query ( "SELECT sEmail, sDescription FROM tblDartInvoiceSendEmails WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
 	foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row )
 		$sendEmails [] = array ('name' => $row ['sDescription'], 'email' => $row ['sEmail']);
 	$stmt->closeCursor ();
-
+	
 	// Get the faxes
 	$stmt = $dbh->query ( "SELECT sFax, sDescription FROM tblDartInvoiceSendFaxes WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
 	foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row )
 		$sendFaxes [] = array ('name' => $row ['sDescription'], 'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $row ['sFax'] ));
 	$stmt->closeCursor ();
-
+	
 	// RSI ID
 	$stmt = $dbh->query ( "SELECT iRSIID FROM tblDartInvoiceSendRSI WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
 	$result = $stmt->fetch ( PDO::FETCH_ASSOC );
 	$rsiID = ($result ['iRSIID'] > 0) ? $result ['iRSIID'] : 0;
 	$stmt->closeCursor ();
-
+	
 	$dbh = null;
 } catch ( PDOException $e ) {
 	$errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $e->getMessage ();
@@ -93,7 +93,7 @@ try {
 if ($mailPDFs || $faxPDFs) {
 	for($i = 1; $i < count ( $argv ); $i ++) {
 		$invNum = $argv [$i];
-
+		
 		$lineItems = array ();
 		$invTotal = 0.0;
 		$trackInvoiceEdits = array ();
@@ -101,7 +101,7 @@ if ($mailPDFs || $faxPDFs) {
 			$dbh = new PDO ( 'spdb', '', '' );
 			// set the error reporting attribute.
 			$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-
+			
 			// Get the line items of the invoice.
 			$sql = "uspWebXFInvoiceDetail " . $invNum;
 			$stmt = $dbh->query ( $sql );
@@ -112,13 +112,13 @@ if ($mailPDFs || $faxPDFs) {
 				if ($row ['iProductID'] == 9997)
 					$greenDiscount = $itemTotal;
 				else
-					$lineItems [] = array ('description' => $row ['Description'], 'ordered' => round ( $row ['fOrderQuantity'], 2 ), 'shipped' => round ( $row ['fShipQuantity'], 2 ), 'unitPrice' => sprintf ( "%0.2f", $row ['mUnitPrice'] ), 'itemTotal' => $itemTotal, 'status' => $row ['Status'],
+					$lineItems [] = array ('description' => $row ['Description'], 'ordered' => round ( $row ['fOrderQuantity'], 2 ), 'shipped' => round ( $row ['fShipQuantity'], 2 ), 'unitPrice' => sprintf ( "%0.2f", $row ['mUnitPrice'] ), 'itemTotal' => $itemTotal, 'status' => $row ['Status'], 
 							'prodID' => $row ['iProductID']);
 			}
 			$stmt->closeCursor ();
 			if ($greenDiscount != 0.0)
 				$lineItems [] = array ('description' => 'Green Discount ...', 'ordered' => 1, 'shipped' => 1, 'unitPrice' => sprintf ( "%0.2f", $greenDiscount ), 'itemTotal' => $greenDiscount, 'status' => '', 'prodID' => 9997);
-
+				
 				// Get the tracking info for initial entry
 			$sql = "uspWebXFInvoiceTrackingInfo " . $invNum;
 			$stmt = $dbh->query ( $sql );
@@ -127,7 +127,7 @@ if ($mailPDFs || $faxPDFs) {
 				$trackInvoiceEntry = array ('source' => $row ['OrderSource'], 'timeStamp' => date ( 'M j, Y g:i A', strtotime ( $ts ) ), 'driver' => $row ['Driver'], 'packer' => $row ['Packer'], 'orderTaker' => $row ['OrderedTaker'], 'ooUser' => $row ['UserNameOrdered']);
 			}
 			$stmt->closeCursor ();
-
+			
 			// Get the tracking info for edits
 			$sql = "uspWebXFInvoiceTrackingEdits " . $invNum;
 			$stmt = $dbh->query ( $sql );
@@ -135,14 +135,14 @@ if ($mailPDFs || $faxPDFs) {
 				$trackInvoiceEdits [] = array ('modifiedBy' => $row ['ModifiedBy'], 'timeStamp' => $row ['TimeModified']);
 			}
 			$stmt->closeCursor ();
-
+			
 			$dbh = null;
 		} catch ( PDOException $e ) {
 			$errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $e->getMessage ();
 			SP_ErrorLogging ( $errorTxt, true, DART_ERROR_LOG );
 			exit ();
 		}
-
+		
 		$pdf = new invoicePDF ();
 		$pdf->setLocation ( $locInfo [$invNum] ['name'], $locInfo [$invNum] ['address'], $locInfo [$invNum] ['city'], $locInfo [$invNum] ['state'], $locInfo [$invNum] ['zip'], formatPhone ( $locInfo [$invNum] ['phone'] ) );
 		$pdf->setInvoiceHeader ( $invNum, $locInfo [$invNum] ['shipdate'], $locInfo [$invNum] ['salesperson'], formatPhone ( $locInfo [$invNum] ['salesphone'] ), $locInfo [$invNum] ['po'], $locInfo [$invNum] ['terms'] );
@@ -168,7 +168,7 @@ if ($mailPDFs || $faxPDFs) {
 		$pdf->addSignatureImage ( $sigImage );
 		// Add signer info
 		$pdf->addSigner ( $locInfo [$invNum] ['signer'], $locInfo [$invNum] ['deldate'] );
-
+		
 		// Add the tracking information
 		if (isset ( $trackInvoiceEntry )) {
 			if ($pdf->checkNoSpaceLeft ( 0.25 ))
@@ -193,7 +193,9 @@ if ($mailPDFs || $faxPDFs) {
 // Instantiate the mail stuff
 $mail = new PHPMailer ();
 $mail->IsSMTP ();
-$mail->Host = "localhost";
+$mail->SMTPOptions = array ('ssl' => array ('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
+$mail->Host = SPConsts::PHPMailerHostIP;
+$mail->Helo = "vDart-PHP";
 $mail->SMTPAuth = false;
 
 // Send the emails
@@ -204,15 +206,15 @@ if ($mailPDFs) {
 	if (count ( $sendEmails ) > 0) {
 		$emailLogFile = SPConsts::ErrorLogRoot . "dart_emails.txt";
 		$fp = fopen ( $emailLogFile, "a" );
-
+		
 		// Subject line
 		$subjectStr = (count ( $argv ) == 2) ? 'SP Invoice : ' : 'SP Invoices : ';
 		$subjectStr .= $argv [1];
 		for($i = 2; $i < count ( $argv ); $i ++)
 			$subjectStr .= ', ' . $argv [$i];
-
+		
 		fwrite ( $fp, date ( '[d-M-Y H:i:s]' ) . " : " . $subjectStr . " -" );
-
+		
 		$mail->FromName = "Specialty Produce Accounting";
 		$mail->From = "ar@specialtyproduce.com";
 		$mail->Subject = $subjectStr;
@@ -242,7 +244,7 @@ Sincerely,
 Specialty Produce
 
 EOT;
-
+		
 		// Send the emails
 		$badEmails = array ();
 		foreach ( $sendEmails as $entry ) {
@@ -296,14 +298,14 @@ if ($faxPDFs) {
 			$sql = "uspDARTFaxListAdd '$invXML'";
 			// dartLogging ( $currentScript, " Dart Fax add, sql = " . $invXML );
 			$resultFaxAdded = $dbh->exec ( $sql );
-
+			
 			$dbh = null;
 		} catch ( PDOException $e ) {
 			$errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $e->getMessage ();
 			SP_ErrorLogging ( $errorTxt, true, DART_ERROR_LOG );
 			exit ();
 		}
-
+		
 		if ($resultFaxAdded === false) {
 			$errMsg = "uspDARTFaxListAdd $invXML returned FALSE";
 			SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
@@ -339,7 +341,7 @@ if ($processEDIs) {
 					$fp = fopen ( $emailLogFile, "a" );
 					$subjectStr = "SP Offline PO : " . $offLinePOs [$saleID];
 					fwrite ( $fp, date ( '[d-M-Y H:i:s]' ) . " : " . $subjectStr . " -" );
-
+					
 					$mail->FromName = "Specialty Produce Accounting";
 					$mail->From = "ar@specialtyproduce.com";
 					$mail->AddCC = "christopher@specialtyproduce.com";
@@ -492,7 +494,7 @@ if ($mailRSI) {
 		}
 		$mail->ClearAttachments ();
 		sleep ( 3 );
-		unlink($rsiFile);
+		unlink ( $rsiFile );
 	}
 	$mail->ClearAllRecipients ();
 } else {

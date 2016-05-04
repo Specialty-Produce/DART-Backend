@@ -7,10 +7,12 @@ SP_errorLogging ( "testCDC2 started", false );
 $emailList = array("christopher@specialtyproduce.com", "xtophersd@yahoo.com");
 
 // Set up the mailer with correct default values...
-require ("class.phpmailer.php");
+require_once 'PHPMailer5.2/PHPMailerAutoload.php';
 $mail = new PHPMailer ();
 $mail->IsSMTP ();
-$mail->Host = "localhost";
+$mail->SMTPOptions = array ('ssl' => array ('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
+$mail->Host = SPConsts::PHPMailerHostIP;
+$mail->Helo = "vDart-PHP";
 $mail->SMTPAuth = false;
 
 // Send out the emails

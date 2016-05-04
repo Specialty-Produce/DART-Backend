@@ -63,10 +63,12 @@ if ($encodedCrashLog == FALSE || is_null ( $encodedCrashLog )) {
 
 // Setup email
 // Mailer
-require 'class.phpmailer.php';
+require_once 'PHPMailer5.2/PHPMailerAutoload.php';
 $mail = new PHPMailer ();
 $mail->IsSMTP ();
-$mail->Host = "localhost";
+$mail->SMTPOptions = array ('ssl' => array ('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
+$mail->Host = SPConsts::PHPMailerHostIP;
+$mail->Helo = "vDart-PHP";
 $mail->SMTPAuth = false;
 $mail->FromName = "Specialty Produce DART";
 $mail->From = "itadmin@specialtyproduce.com";

@@ -8,7 +8,8 @@ require ('classes_SP/class_InvoiceRSI.php');
 require ('classes_SP/class_InvoiceHula.php');
 require_once 'EDI_SP.php';
 require ('classes_SP/class_SP_FTP.php');
-require ('class.phpmailer.php');
+//require ('class.phpmailer.php');
+require_once 'PHPMailer5.2/PHPMailerAutoload.php';
 
 $debugBCC = false;
 
@@ -197,7 +198,10 @@ $sendCount = 0;
 // Instantiate the mail stuff
 $mail = new PHPMailer ();
 $mail->IsSMTP ();
-$mail->Host = "localhost";
+$mail->SMTPOptions = array ('ssl' => array ('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
+$mail->Host = SPConsts::PHPMailerHostIP;
+$mail->Helo = "vDart-PHP";
+//$mail->Host = "localhost";
 $mail->SMTPAuth = false;
 
 // Send the emails
