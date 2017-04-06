@@ -106,6 +106,7 @@ $invoiceList = array ();
 foreach ( $routeInfo as $entry ) {
 	if (in_array ( $entry ['iSaleID'], $saleIDs )) {
 		$lastUpdate = preg_replace ( '/(.*)\.\d{3}$/', '$1', $entry ['dtDartLastUpdated'] );
+		$packerLocation = (is_null($entry ['sPackerLocation'])) ? '' : mb_convert_encoding ( $entry ['sPackerLocation'], "UTF-8", "Windows-1252" );
 		$invoiceList [$entry ['iSaleID']] = array (
 			'saleID' => $entry ['iSaleID'],
 			'locID' => $entry ['iLocationDestinationID'],
@@ -113,7 +114,8 @@ foreach ( $routeInfo as $entry ) {
 			'lastupdate' => $lastUpdate,
 			'notes' => mb_convert_encoding ( $entry ['txtInvoiceNotes'], "UTF-8", "Windows-1252" ),
 			'po' => mb_convert_encoding ( $entry ['sPO'], "UTF-8", "Windows-1252" ),
-			'terms' => mb_convert_encoding ( $entry ['sTerms'], "UTF-8", "Windows-1252" ) );
+			'terms' => mb_convert_encoding ( $entry ['sTerms'], "UTF-8", "Windows-1252" ),
+			'packerlocation' => $packerLocation);
 		$invoiceList [$entry ['iSaleID']] ['items'] = array ();
 	}
 }

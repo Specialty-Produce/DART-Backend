@@ -59,7 +59,7 @@ try {
 }
 
 if ($result === false) {
-	$errMsg = "uspDartCancelBySP $userid, $saleid returned FALSE";
+	$errMsg = "uspDARTTransferDriver $userid, $saleid returned FALSE";
 	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
 	echo $badXML;

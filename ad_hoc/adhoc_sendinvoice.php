@@ -1,14 +1,73 @@
 <?php
-include_once 'global_CDC.php';
-include 'dart_init.php';
-$currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
-require ('classes_SP/class_invoicePDF.php');
-require ('classes_SP/class_InvoiceRSI.php');
+// exit ();
+require_once 'global_CDC.php';
+require_once '../dart_init.php';
+require_once 'classes_SP/class_LocationSP.php';
+require_once 'classes_SP/class_invoicePDF.php';
+require_once 'classes_SP/class_InvoiceRSI.php';
+// Hula Software became Restuarant Matrix - I changed the FTP folder but otherwise left the Hula naming scheme
+require_once 'classes_SP/class_InvoiceHula.php';
+require_once 'classes_SP/class_InvoiceProfitProPlus.php';
 require_once 'EDI_SP.php';
-require ('classes_SP/class_SP_FTP.php');
-require ('PHPMailer5.2/PHPMailerAutoload.php');
+require_once 'classes_SP/class_SP_FTP.php';
+require_once 'PHPMailer5.2/PHPMailerAutoload.php';
 
-exit ();
+/* XXX */
+exit();
+
+function sortLineItems ($a, $b) {
+	global $useCOG;
+	if ($useCOG) {
+		$cmpCOG = strnatcmp ( $a ['cogAccount'], $b ['cogAccount'] );
+		if ($cmpCOG == 0)
+			return strnatcmp ( $a ['description'], $b ['description'] );
+		else
+			return $cmpCOG;
+	} else
+		return strnatcmp ( $a ['description'], $b ['description'] );
+}
+
+$currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
+if (preg_match ( '/adhoc/', $currentScript ))
+	$adhoc = true;
+else
+	$adhoc = false;
+
+$debug = false;
+/* XXX */
+$debugMail = 'christopher@specialtyproduce.com';
+$debugName = 'Christopher Cilley';
+$debugFax = '';
+$pdfMail = true;
+$pdfFax = true;
+$processEDIs = true;
+$rsiMail = true;
+$hulaMail = true;
+$pppMail = true;
+
+// $resendArray = array (3123888,3123662,3123908,3123956,3123321);
+
+// foreach ( $resendArray as $resendSaleID ) {
+
+if ($adhoc) {
+	// $argv = array('adhoc_sendinvoice.php', 2047355, 2047430, 2047550, 2047868, 2048719, 2048824, 2048999, 2049593, 2050683, 2050957, 2051078);
+	/* XXX */
+	$resendSaleID = 3154498;
+	$argv = array ('adhoc_sendinvoice.php', $resendSaleID);
+	echo "<pre>\n";
+	echo "Starting...\n\n";
+	echo "count = " . count ( $argv ) . "\n";
+	
+	$debug = false;
+	$pdfMail = false;
+	$pdfFax = false;
+	$processEDIs = true;
+	$rsiMail = false;
+	$hulaMail = false;
+	$pppMail = false;
+}
+
+$useCOG = false;
 
 // Get the information on the location associated with these invoices
 $locInfo = array ();
@@ -17,18 +76,8 @@ $sendFaxes = array ();
 $offLinePOs = array ();
 $offLinePOcount = 1;
 $rsiID = 0;
-
-$mailPDFs = false;
-$faxPDFs = false;
-$processEDIs = false;
-$mailRSI = false;
-
-// $argv = array('adhoc_sendinvoice.php', 2047355, 2047430, 2047550, 2047868, 2048719, 2048824, 2048999, 2049593, 2050683, 2050957, 2051078);
-$argv = array ('adhoc_sendinvoice.php', 2153086, 2153185, 2154148, 2155215, 2156194, 2156582, 2157180);
-echo "<pre>\n";
-echo "Starting...\n\n";
-echo "count = " . count ( $argv ) . "\n";
-
+$hulaID = 0;
+$pppEmails = array ();
 try {
 	$dbh = new PDO ( 'spdb', '', '' );
 	// set the error reporting attribute.
@@ -39,8 +88,9 @@ try {
 	for($i = 1; $i < count ( $argv ); $i ++)
 		$invXML .= '<Rec rID="' . $argv [$i] . '"/>' . "\n";
 	$invXML .= "</ROOT>\n";
-	echo "\$invXML = " . htmlentities ( $invXML ) . "\n";
-	
+	if ($adhoc) {
+		echo "\$invXML = " . htmlentities ( $invXML ) . "\n";
+	}
 	// Get the info
 	$stmt = $dbh->query ( "uspDARTSendInvoiceInfo '" . $invXML . "'" );
 	foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
@@ -51,7 +101,8 @@ try {
 		$ediID = trim ( $row ['sInterchangeID'] );
 		$POnumber = trim ( $row ['sPO'] );
 		if (strlen ( $ediID ) > 0 && strlen ( $POnumber ) == 0) {
-			if (constant ( 'EDISPConsts::' . $ediID . "_REQUIREPO" )) {
+			$requireEDIPO = constant ( 'EDISPConsts::' . $ediID . "_REQUIREPO" );
+			if ($requireEDIPO != null) {
 				$POnumber = 'SP-' . date ( 'ymdHi' ) . '-' . sprintf ( "%02d", $offLinePOcount );
 				$offLinePOs [$row ['iSaleID']] = $POnumber;
 				$offLinePOcount ++;
@@ -69,18 +120,67 @@ try {
 	foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row )
 		$sendEmails [] = array ('name' => $row ['sDescription'], 'email' => $row ['sEmail']);
 	$stmt->closeCursor ();
+	if ($adhoc) {
+		if ($debug) {
+			$sendEmails = array ();
+			if ($pdfMail)
+				$sendEmails [] = array ('name' => $debugName, 'email' => $debugMail);
+		}
+	} else {
+		if ($debug)
+			$sendEmails [] = array ('name' => $debugName, 'email' => $debugMail);
+	}
 	
 	// Get the faxes
 	$stmt = $dbh->query ( "SELECT sFax, sDescription FROM tblDartInvoiceSendFaxes WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
 	foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row )
 		$sendFaxes [] = array ('name' => $row ['sDescription'], 'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $row ['sFax'] ));
 	$stmt->closeCursor ();
+	if ($adhoc) {
+		if ($debug) {
+			$sendFaxes = array ();
+			if ($pdfFax)
+				$sendFaxes [] = array ('name' => $debugName, 'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $debugFax ));
+		}
+	} else {
+		if ($debug && strlen ( $debugFax ) == 10)
+			$sendFaxes [] = array ('name' => $debugName, 'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $debugFax ));
+	}
 	
 	// RSI ID
 	$stmt = $dbh->query ( "SELECT iRSIID FROM tblDartInvoiceSendRSI WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
 	$result = $stmt->fetch ( PDO::FETCH_ASSOC );
 	$rsiID = ($result ['iRSIID'] > 0) ? $result ['iRSIID'] : 0;
 	$stmt->closeCursor ();
+	if ($adhoc) {
+		if ($debug) {
+			$rsiID = 0;
+		}
+	}
+	
+	// Hula ID
+	$stmt = $dbh->query ( "SELECT iLocationID FROM tblDartInvoiceSendHula WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+	$result = $stmt->fetch ( PDO::FETCH_ASSOC );
+	$hulaID = ($result ['iLocationID'] > 0) ? $result ['iLocationID'] : 0;
+	$stmt->closeCursor ();
+	if ($adhoc) {
+		if ($debug) {
+			$hulaID = 0;
+		}
+	}
+	
+	// Profit Pro Plus
+	$stmt = $dbh->query ( "SELECT iLocationID, tEmails FROM tblDartInvoiceSendProfitProPlus WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+	$result = $stmt->fetch ( PDO::FETCH_ASSOC );
+	$pppEmails = ($result ['iLocationID'] > 0) ? explode ( ',', $result ['tEmails'] ) : array ();
+	$stmt->closeCursor ();
+	if ($adhoc) {
+		if ($debug) {
+			$pppEmails = array ();
+			if ($pppMail)
+				$pppEmails [] = array ('name' => $debugName, 'email' => $debugMail);
+		}
+	}
 	
 	$dbh = null;
 } catch ( PDOException $e ) {
@@ -89,8 +189,21 @@ try {
 	exit ();
 }
 
-// Work through each invoice and save the PDF
-if ($mailPDFs || $faxPDFs) {
+// Get the COG Accounts information
+try {
+	list ( $useCOG, $cogShowZeroTotal, $cogMaster, $cogLocation ) = LocationSP::getCOGSetup ( $locInfo [$argv [1]] ['id'] );
+} catch ( SP_Exception $e ) {
+	$errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $e->getMessage ();
+	SP_ErrorLogging ( $errorTxt, true, DART_ERROR_LOG );
+	exit ();
+}
+
+/* XXX */
+if ($useCOG && count ( $sendEmails ) > 0)
+	$sendEmails [] = array ('name' => $debugName, 'email' => $debugMail);
+	
+	// Work through each invoice and save the PDF
+if ($pdfMail || $pdfFax) {
 	for($i = 1; $i < count ( $argv ); $i ++) {
 		$invNum = $argv [$i];
 		
@@ -105,21 +218,25 @@ if ($mailPDFs || $faxPDFs) {
 			// Get the line items of the invoice.
 			$sql = "uspWebXFInvoiceDetail " . $invNum;
 			$stmt = $dbh->query ( $sql );
-			$greenDiscount = 0.0;
 			foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
 				$itemTotal = preg_replace ( '/^\$/', '', $row ['Total'] );
 				$invTotal += $itemTotal;
+				if ($useCOG) {
+					$cogAccount = ($cogMaster [$row ['iCOGMasterID']] != null && $cogMaster [$row ['iCOGMasterID']] != 0) ? $cogMaster [$row ['iCOGMasterID']] : 0;
+					$cogLocation [$cogAccount] ['count'] += 1;
+					$cogLocation [$cogAccount] ['total'] += $itemTotal;
+				} else {
+					$cogAccount = '';
+				}
 				if ($row ['iProductID'] == 9997)
-					$greenDiscount = $itemTotal;
+					$lineItems [] = array ('description' => 'Green Discount ...', 'ordered' => 1, 'shipped' => 1, 'unitPrice' => sprintf ( "%0.2f", $itemTotal ), 'itemTotal' => $itemTotal, 'status' => '', 'prodID' => 9997, 'cogAccount' => $cogAccount);
 				else
 					$lineItems [] = array ('description' => $row ['Description'], 'ordered' => round ( $row ['fOrderQuantity'], 2 ), 'shipped' => round ( $row ['fShipQuantity'], 2 ), 'unitPrice' => sprintf ( "%0.2f", $row ['mUnitPrice'] ), 'itemTotal' => $itemTotal, 'status' => $row ['Status'], 
-							'prodID' => $row ['iProductID']);
+							'prodID' => $row ['iProductID'], 'cogAccount' => $cogAccount);
 			}
 			$stmt->closeCursor ();
-			if ($greenDiscount != 0.0)
-				$lineItems [] = array ('description' => 'Green Discount ...', 'ordered' => 1, 'shipped' => 1, 'unitPrice' => sprintf ( "%0.2f", $greenDiscount ), 'itemTotal' => $greenDiscount, 'status' => '', 'prodID' => 9997);
-				
-				// Get the tracking info for initial entry
+			
+			// Get the tracking info for initial entry
 			$sql = "uspWebXFInvoiceTrackingInfo " . $invNum;
 			$stmt = $dbh->query ( $sql );
 			foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
@@ -143,6 +260,9 @@ if ($mailPDFs || $faxPDFs) {
 			exit ();
 		}
 		
+		if ($useCOG)
+			usort ( $lineItems, 'sortLineItems' );
+		
 		$pdf = new invoicePDF ();
 		$pdf->setLocation ( $locInfo [$invNum] ['name'], $locInfo [$invNum] ['address'], $locInfo [$invNum] ['city'], $locInfo [$invNum] ['state'], $locInfo [$invNum] ['zip'], formatPhone ( $locInfo [$invNum] ['phone'] ) );
 		$pdf->setInvoiceHeader ( $invNum, $locInfo [$invNum] ['shipdate'], $locInfo [$invNum] ['salesperson'], formatPhone ( $locInfo [$invNum] ['salesphone'] ), $locInfo [$invNum] ['po'], $locInfo [$invNum] ['terms'] );
@@ -150,7 +270,12 @@ if ($mailPDFs || $faxPDFs) {
 			$pdf->showProdID ();
 		$pdf->startInvoice ();
 		// Item List
+		$cogLastAccount = '';
 		foreach ( $lineItems as $line ) {
+			if ($useCOG && $line ['cogAccount'] !== $cogLastAccount) {
+				$cogLastAccount = $line ['cogAccount'];
+				$pdf->addCOGAccountLine ( $cogLastAccount . ' - ' . $cogLocation [$cogLastAccount] ['description'] );
+			}
 			$pdf->addLineItem ( $line ['description'], $line ['ordered'], $line ['shipped'], $line ['unitPrice'], $line ['itemTotal'], $line ['status'], $line ['prodID'] );
 		}
 		// Invoice Total
@@ -168,7 +293,44 @@ if ($mailPDFs || $faxPDFs) {
 		$pdf->addSignatureImage ( $sigImage );
 		// Add signer info
 		$pdf->addSigner ( $locInfo [$invNum] ['signer'], $locInfo [$invNum] ['deldate'] );
-		
+		// Add COG info
+		if ($useCOG) {
+			// Determine how many lines of space we need
+			if ($cogShowZeroTotal)
+				$numCOGLines = count ( $cogLocation );
+			else {
+				$numCOGLines = 0;
+				foreach ( $cogLocation as $entry ) {
+					$numCOGLines += ($entry ['count'] > 0) ? 1 : 0;
+				}
+			}
+			if ($pdf->checkNoSpaceLeft ( 0.2 * ($numCOGLines + 2) ))
+				$pdf->markContinued ();
+				// Calc max Account length
+			$pdf->SetFont ( 'Arial', 'B', 12 );
+			$maxLengthAccount = $pdf->GetStringWidth ( 'Account' );
+			$maxLengthDesc = $pdf->GetStringWidth ( 'Description' );
+			$maxLengthTotal = $pdf->GetStringWidth ( 'Amount' );
+			foreach ( $cogLocation as $accKey => $entry ) {
+				if ($cogShowZeroTotal == false && $cogLocation [$accKey] ['count'] == 0)
+					continue;
+				$tmpLen = $pdf->GetStringWidth ( $accKey );
+				$maxLengthAccount = ($tmpLen > $maxLengthAccount) ? $tmpLen : $maxLengthAccount;
+				$tmpLen = $pdf->GetStringWidth ( $entry ['description'] );
+				$maxLengthDesc = ($tmpLen > $maxLengthDesc) ? $tmpLen : $maxLengthDesc;
+				$tmpLen = $pdf->GetStringWidth ( sprintf ( '%0.2f', $entry ['total'] ) );
+				$maxLengthTotal = ($tmpLen > $maxLengthTotal) ? $tmpLen : $maxLengthTotal;
+			}
+			$pdf->addCOGHeader ( $maxLengthAccount, $maxLengthDesc, $maxLengthTotal );
+			foreach ( $cogLocation as $accKey => $entry ) {
+				if ($accKey == '0' && $entry ['count'] == 0)
+					continue;
+				if ($cogShowZeroTotal == false && $cogLocation [$accKey] ['count'] == 0)
+					continue;
+				$pdf->addCOGLine ( $accKey, $entry ['description'], sprintf ( '%0.2f', $entry ['total'] ) );
+			}
+			$pdf->addCOGTotal ( sprintf ( "%0.2f", $invTotal ) );
+		}
 		// Add the tracking information
 		if (isset ( $trackInvoiceEntry )) {
 			if ($pdf->checkNoSpaceLeft ( 0.25 ))
@@ -190,21 +352,24 @@ if ($mailPDFs || $faxPDFs) {
 	}
 }
 
+// Keep track of how many places this is sent to successfully. If we are at "0" at the end, print for sales person
+$sendCount = 0;
+
 // Instantiate the mail stuff
 $mail = new PHPMailer ();
 $mail->IsSMTP ();
 $mail->SMTPOptions = array ('ssl' => array ('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
 $mail->Host = SPConsts::PHPMailerHostIP;
 $mail->Helo = "vDart-PHP";
+// $mail->Host = "localhost";
 $mail->SMTPAuth = false;
 
 // Send the emails
-if ($mailPDFs) {
-	echo "Sending PDFs via email...\n";
-	// Keep track of how many places this is sent to successfully. If we are at "0" at the end, print for sales person
-	$sendCount = 0;
+if ($pdfMail) {
+	if ($adhoc)
+		echo "Sending PDFs via email...\n";
+	$emailLogFile = SPConsts::ErrorLogRoot . "dart_emails.txt";
 	if (count ( $sendEmails ) > 0) {
-		$emailLogFile = SPConsts::ErrorLogRoot . "dart_emails.txt";
 		$fp = fopen ( $emailLogFile, "a" );
 		
 		// Subject line
@@ -247,6 +412,8 @@ EOT;
 		
 		// Send the emails
 		$badEmails = array ();
+		if ($debug)
+			$mail->AddBCC ( $debugMail, $debugName );
 		foreach ( $sendEmails as $entry ) {
 			if (strlen ( $entry ['email'] ) > 0) {
 				fwrite ( $fp, " " . $entry ['email'] );
@@ -260,6 +427,7 @@ EOT;
 						$sendCount ++;
 					}
 					$mail->ClearAddresses ();
+					$mail->ClearBCCs ();
 				}
 			}
 		}
@@ -269,14 +437,16 @@ EOT;
 	}
 	$mail->ClearAllRecipients ();
 } else {
-	echo "NOT sending PDFs via email...\n";
+	if ($adhoc)
+		echo "NOT sending PDFs via email...\n";
 }
 
 // Fax it
-if ($faxPDFs) {
-	echo "Sending PDFs via fax...\n";
-	// Can't fax a pdf from within this program. Need to convert to tiff first.
-	// Source for the tiff conversion : http://phpdave.wordpress.com/tag/php-pdf-to-tiff/
+if ($pdfFax) {
+	if ($adhoc)
+		echo "Sending PDFs via fax...\n";
+		// Can't fax a pdf from within this program. Need to convert to tiff first.
+		// Source for the tiff conversion : http://phpdave.wordpress.com/tag/php-pdf-to-tiff/
 	if (count ( $sendFaxes ) > 0) {
 		$invXML = "<ROOT>\n";
 		foreach ( $locInfo as $invoice ) {
@@ -314,12 +484,14 @@ if ($faxPDFs) {
 		}
 	}
 } else {
-	echo "NOT sending PDFs via fax...\n";
+	if ($adhoc)
+		echo "NOT sending PDFs via fax...\n";
 }
 
 // Process the EDI invoices
 if ($processEDIs) {
-	echo "Sending via EDI...\n";
+	if ($adhoc)
+		echo "Sending via EDI...\n";
 	$ftpConnector = new SP_FTP ();
 	foreach ( $locInfo as $loc ) {
 		if (strlen ( $loc ['ediID'] ) > 0) {
@@ -344,11 +516,11 @@ if ($processEDIs) {
 					
 					$mail->FromName = "Specialty Produce Accounting";
 					$mail->From = "ar@specialtyproduce.com";
-					$mail->AddCC = "christopher@specialtyproduce.com";
 					$mail->Subject = $subjectStr;
 					$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
-					// $mail->AddBCC ( "christopher@specialtyproduce.com", "Christopher Cilley" );
-					// Add the PDFs
+					if ($debug)
+						$mail->AddBCC ( $debugMail, $debugName );
+						// Add the PDFs
 					$mail->AddAttachment ( DART_PDF_DIR . $saleID . ".pdf", "$saleID.pdf" );
 					// Add the body
 					$mail->Body = <<< EOT
@@ -379,6 +551,7 @@ EOT;
 						$mail->ClearAddresses ();
 					}
 					$mail->ClearAttachments ();
+					$mail->ClearBCCs ();
 					fwrite ( $fp, "(" . $sendCount . ")\n" );
 					fclose ( $fp );
 				}
@@ -400,11 +573,12 @@ EOT;
 				continue;
 			}
 			$outFileName = 'O_SP_' . date ( 'ymd_His' ) . '.810';
-			$outPath = EDISPConsts::FTP_ROOT . $loc ['ediID'] . '\outgoing\\';
+			$outPath = EDISPConsts::FTP_ROOT . $loc ['ediID'] . '\\outgoing\\';
 			$outFile = $outPath . $outFileName;
 			if (! file_put_contents ( $outFile, $msg )) {
 				$errMsg = "Error writing outgoing 810 : $outFile" . "\nfor invoice # " . $loc ['saleID'];
 				SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
+				echo $errMsg . "\n";
 				continue;
 			}
 			// Set up the ftp connection, if needed
@@ -429,18 +603,17 @@ EOT;
 			}
 			// Save the outgoing file to the EDI dir
 			if ($sentSuccessfully) {
-				$savePath = EDISPConsts::EDI_SAVE_DIR . $loc ['ediID'] . '\outgoing\\' . $outFileName;
+				$savePath = EDISPConsts::EDI_SAVE_DIR . $loc ['ediID'] . '\\outgoing\\' . $outFileName;
 				if (! copy ( $outFile, $savePath )) {
-					flagFTPFile ( $loc ['ediID'], $outFile );
 					$errMsg = "Error saving $outFile to $savePath\nfor invoice # " . $loc ['saleID'];
 					SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
 					continue;
 				}
-				echo "Sent $outFileName for saleID = $saleID\n";
-				// Unlink the file if we sent it, otherwise it will sit waiting to be picked up and subsequently deleted.
+				if ($adhoc)
+					echo "Sent $outFileName for saleID = $saleID\n";
+					// Unlink the file if we sent it, otherwise it will sit waiting to be picked up and subsequently deleted.
 				if (constant ( 'EDISPConsts::' . $loc ['ediID'] . "_SENDFTP" )) {
 					if (! unlink ( $outFile )) {
-						flagFTPFile ( $loc ['ediID'], $outFile );
 						$errMsg = "Error unlinking $outFile\nfor invoice # " . $loc ['saleID'];
 						SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
 						continue;
@@ -453,12 +626,14 @@ EOT;
 	}
 	$mail->ClearAllRecipients ();
 } else {
-	echo "NOT sending via EDI...\n";
+	if ($adhoc)
+		echo "NOT sending via EDI...\n";
 }
 
 // Process RSI Invoices
-if ($mailRSI) {
-	echo "Sending via RSI...\n";
+if ($rsiMail) {
+	if ($adhoc)
+		echo "Sending via RSI...\n";
 	if ($rsiID > 0) {
 		$rsiLocationName = $locInfo [$argv [1]] ['name'];
 		// $rsiMailtoAddress = "xtophersd@yahoo.com";
@@ -481,7 +656,8 @@ if ($mailRSI) {
 		$mail->FromName = "Specialty Produce Accounting";
 		$mail->From = "ar@specialtyproduce.com";
 		$mail->AddAddress ( $rsiMailtoAddress );
-		// $mail->AddBCC("christopher@specialtyproduce.com");
+		if ($debug)
+			$mail->AddBCC ( $debugMail, $debugName );
 		$mail->Subject = "Specialty Produce Imported Invoice";
 		$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
 		$mail->AddAttachment ( $rsiFile, $rsiFilename );
@@ -493,27 +669,101 @@ if ($mailRSI) {
 			SP_errorLogging ( $errMsg, true, '', $currentScript . " - RSI error" );
 		}
 		$mail->ClearAttachments ();
+		$mail->ClearBCCs ();
 		sleep ( 3 );
 		unlink ( $rsiFile );
 	}
 	$mail->ClearAllRecipients ();
 } else {
-	echo "NOT sending via RSI...\n";
+	if ($adhoc)
+		echo "NOT sending via RSI...\n";
+}
+
+// Process Hula Invoices
+if ($hulaMail) {
+	if ($adhoc)
+		echo "Sending via HULA...\n";
+	if ($hulaID > 0) {
+		$hulaFilenamePrefix = preg_replace ( '/[^a-zA-Z0-9_-]/', '', preg_replace ( '/\s/', '_', $locInfo [$argv [1]] ['name'] ) );
+		foreach ( $locInfo as $loc ) {
+			$invHula = new InvoiceHula ();
+			try {
+				$invHula->retrieveInvoice ( $loc ['saleID'] );
+				$hulaFile = DART_HULA_DIR . $hulaFilenamePrefix . "_" . $loc ['saleID'] . ".txt";
+				$hulaFH = fopen ( $hulaFile, "w" );
+				fwrite ( $hulaFH, $invHula->generateHulaOutput () );
+				fclose ( $hulaFH );
+			} catch ( SP_Exception $spe ) {
+				$errMsg = "Hula : Retrieve invoice error : " . $spe->getMessage ();
+				SP_errorLogging ( $errMsg, true, '', $currentScript . " - Hula error" );
+				continue;
+			}
+		}
+	}
+} else {
+	if ($adhoc)
+		echo "NOT sending via HULA...\n";
+}
+
+// Process Profit Pro Plus Invoices
+if ($pppMail) {
+	if ($adhoc)
+		echo "Sending via PPM...\n";
+	if (count ( $pppEmails ) > 0) {
+		$pppLocationName = $locInfo [$argv [1]] ['name'];
+		$mail->FromName = "Specialty Produce Accounting";
+		$mail->From = "ar@specialtyproduce.com";
+		foreach ( $pppEmails as $pppMailToAddress )
+			$mail->AddAddress ( $pppMailToAddress );
+		if ($debug)
+			$mail->AddBCC ( $debugMail, $debugName );
+		$mail->Subject = "$pppLocationName : Specialty Produce Imported Invoice";
+		$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
+		
+		foreach ( $locInfo as $loc ) {
+			$pppFileName = $loc ['saleID'] . '.txt';
+			$pppFile = DART_PPP_DIR . $pppFileName;
+			$pppFH = fopen ( $pppFile, "w" );
+			$invPPP = new InvoiceProfitProPlus ();
+			try {
+				$invPPP->retrieveInvoice ( $loc ['saleID'] );
+				fwrite ( $pppFH, $invPPP->generateProfitProPlusOutput () );
+			} catch ( SP_Exception $spe ) {
+				$errMsg = "PPP : Retrieve invoice error : " . $spe->getMessage ();
+				SP_errorLogging ( $errMsg, true, '', $currentScript . " - PPP error" );
+				continue;
+			}
+			fclose ( $pppFH );
+			$mail->AddAttachment ( $pppFile, $pppFileName );
+		}
+		// Add the body
+		$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " . $pppLocationName . "\n - Specialty Produce System";
+		// Send the email
+		if (! $mail->Send ()) {
+			$errMsg = "PPP : Send mail error : " . implode ( ',', $pppEmails );
+			SP_errorLogging ( $errMsg, true, '', $currentScript . " - PPP error" );
+		}
+		$mail->ClearAttachments ();
+		$mail->ClearBCCs ();
+		sleep ( 3 );
+		foreach ( $locInfo as $loc ) {
+			$pppFileName = $loc ['saleID'] . '.txt';
+			$pppFile = DART_PPP_DIR . $pppFileName;
+			unlink ( $pppFile );
+		}
+	}
+	$mail->ClearAllRecipients ();
+} else {
+	if ($adhoc)
+		echo "NOT sending via PPM...\n";
 }
 
 // Remove the PDFs
-if ($mailPDFs || $faxPDFs) {
-	sleep ( 5 );
-	foreach ( array_keys ( $locInfo ) as $invNum ) {
-		$outFile = DART_PDF_DIR . $invNum . ".pdf";
-		if (! unlink ( $outFile )) {
-			$errMsg = "Error unlinking $outFile\nfor invoice # " . $loc ['saleID'];
-			SP_errorLogging ( $errMsg, true, '', $currentScript . " - unlink error" );
-		}
-	}
+// Do not remove the PDF files, we're going to let them stay for 90 days and delete them with a Scheduled Task
+if ($adhoc) {
+	echo "Done...";
+	echo "</pre>\n";
 }
-
-echo "Done...";
-echo "</pre>\n";
+// }
 exit ( 0 );
 ?>

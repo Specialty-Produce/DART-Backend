@@ -6,6 +6,7 @@ foreach ( $invoiceList as $inv ) {
 	$resultStr .= "<notes>" . $inv ['notes'] . "</notes>\n";
 	$resultStr .= "<ponumber>" . $inv ['po'] . "</ponumber>\n";
 	$resultStr .= "<terms>" . $inv ['terms'] . "</terms>\n";
+	$resultStr .= "<packerlocation>" . $inv['packerlocation'] . "</packerlocation>\n";
 	$resultStr .= "<invoice_item_list>\n";
 	$sortCount = 1;
 	foreach ( $inv ['items'] as $item ) {

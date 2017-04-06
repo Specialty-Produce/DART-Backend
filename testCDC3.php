@@ -19,6 +19,7 @@ dartLogging ( $currentScript, "postdata=" . $postData, $codeStr );
 
 // User ID
 $userid = filter_input ( INPUT_POST, 'userid', FILTER_SANITIZE_NUMBER_INT );
+$userid = 635;
 if ($userid == FALSE || is_null ( $userid )) {
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid User ID', $badXML );
 	echo $badXML;
@@ -28,27 +29,27 @@ if ($userid == FALSE || is_null ( $userid )) {
 try {
 	$dbh = new PDO ( 'spdb', '', '' );
 	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-
+	
 	// There is no difference DEBUG_USER and live driver.
-
+	
 	$stmt = $dbh->query ( "uspDARTProductStatus" );
 	$productStatus = $stmt->fetchAll ( PDO::FETCH_BOTH );
 	$stmt->closeCursor ();
-
+	
 	$stmt = $dbh->query ( "uspDARTOrderStatus" );
 	$orderStatus = $stmt->fetchAll ( PDO::FETCH_BOTH );
 	$stmt->closeCursor ();
-
+	
 	$stmt = $dbh->query ( "uspDARTDriverList" );
 	$driverList = $stmt->fetchAll ( PDO::FETCH_BOTH );
 	$stmt->closeCursor ();
-
+	
 	$sql = "uspDARTVehicleList";
 	$stmt = $dbh->query ( $sql );
 	$vehicleList = $stmt->fetchAll ( PDO::FETCH_BOTH );
 	$stmt->closeCursor ();
 	
-	$sql = "select top 1 dtCreated, siPad from tblDartVersion where siPad is not null order by dtDate desc";
+	$sql = "select top 1 dtCreated, siPad from tblDartVersion where siPad is not null order by dtCreated desc";
 	$stmt = $dbh->query ( $sql );
 	$versioniPad = $stmt->fetch ( PDO::FETCH_BOTH );
 	$stmt->closeCursor ();
@@ -57,9 +58,9 @@ try {
 	$stmt = $dbh->query ( $sql );
 	$versioniPhone = $stmt->fetch ( PDO::FETCH_BOTH );
 	$stmt->closeCursor ();
-
+	
 	// TODO : Get message addresses
-
+	
 	$dbh = null;
 } catch ( PDOException $e ) {
 	$errMsg = $e->getFile () . ' (' . $e->getLine () . ')' . $e->getMessage ();
@@ -69,41 +70,50 @@ try {
 	exit ();
 }
 
+// echo $versioniPad['siPad'] . " : " . $lastUpdate = preg_replace ( '/(.*)\.\d{3}$/', '$1', $versioniPad['dtCreated'] ) . "<br/>";
+// echo $versioniPhone['siPhone'] . " : " . $lastUpdate = preg_replace ( '/(.*)\.\d{3}$/', '$1', $versioniPhone['dtCreated'] ) . "<br/>";
+// exit();
+
 // Generate the XML
 $resultStr = '<?xml version="1.0"?>' . "\n";
 $resultStr .= '<staticinfo status="success">' . "\n";
 $resultStr .= '<productstatus_entry_list infoname="productstatus">' . "\n";
 foreach ( $productStatus as $entry ) {
-	$resultStr .= '<entry id="' . $entry ['iShortID'] . '">' . mb_convert_encoding ( $entry ['sDescription'], "UTF-8", "Windows-1252" ) . "</entry>\n";
+	$resultStr .= '		<entry id="' . $entry ['iShortID'] . '">' . mb_convert_encoding ( $entry ['sDescription'], "UTF-8", "Windows-1252" ) . "</entry>\n";
 }
 $resultStr .= "</productstatus_entry_list>\n";
 $resultStr .= '<orderstatus_entry_list infoname="orderstatus">' . "\n";
 foreach ( $orderStatus as $entry ) {
-	$resultStr .= '<entry id="' . $entry ['iAutoID'] . '">' . mb_convert_encoding ( $entry ['sDescription'], "UTF-8", "Windows-1252" ) . "</entry>\n";
+	$resultStr .= '		<entry id="' . $entry ['iAutoID'] . '">' . mb_convert_encoding ( $entry ['sDescription'], "UTF-8", "Windows-1252" ) . "</entry>\n";
 }
 $resultStr .= "</orderstatus_entry_list>\n";
 $resultStr .= '<messageaddresses_entry_list infoname="addresses">' . "\n";
 $resultStr .= <<< EOT
-<entry id="9215">Christopher Cilley</entry>
-<entry id="2835">Erick Chavez</entry>
-<entry id="2">Management</entry>
-<entry id="635">Roger Harrington</entry>
+		<entry id="9215">Christopher Cilley</entry>
+		<entry id="2835">Erick Chavez</entry>
+		<entry id="2">Management</entry>
+		<entry id="635">Roger Harrington</entry>
 
 EOT;
 $resultStr .= "</messageaddresses_entry_list>\n";
 $resultStr .= '<driver_entry_list infoname="drivers">' . "\n";
 foreach ( $driverList as $entry ) {
-	$resultStr .= '<entry id="' . $entry ['iUserID'] . '">' . mb_convert_encoding ( $entry ['txtFirstName'], "UTF-8", "Windows-1252" ) . " " . mb_convert_encoding ( $entry ['txtLastName'], "UTF-8", "Windows-1252" ) . "</entry>\n";
+	$resultStr .= '		<entry id="' . $entry ['iUserID'] . '">' . mb_convert_encoding ( $entry ['txtFirstName'], "UTF-8", "Windows-1252" ) . " " . mb_convert_encoding ( $entry ['txtLastName'], "UTF-8", "Windows-1252" ) . "</entry>\n";
 }
 $resultStr .= "</driver_entry_list>\n";
 $resultStr .= "<webservicefilesavedays>5</webservicefilesavedays>\n";
 
 $resultStr .= '<vehicle_entry_list infoname="vehicles">' . "\n";
-foreach ($vehicleList as $vehicle) {
-	$resultStr .= '		<entry id="' . $vehicle['iTruckID'] . '">' . $vehicle['iRefrigerated'] . ':' . $vehicle['iOdometer'] . '">' . $vehicle['sDescription'] . "</option>\n";
+foreach ( $vehicleList as $vehicle ) {
+	$resultStr .= '		<entry id="' . $vehicle ['iTruckID'] . '">' . $vehicle ['iRefrigerated'] . ':' . $vehicle ['iOdometer'] . '">' . $vehicle ['sDescription'] . "</option>\n";
 }
-$resultStr .= "</driver_entry_list>\n";
-
+$resultStr .= "</vehicle_entry_list>\n";
+// Versions
+$resultStr .= '<dart_versions_list>' . "\n";
+$resultStr .= '		<ipad versiondate="' . preg_replace ( '/(.*)\.\d{3}$/', '$1', $versioniPad ['dtCreated'] ) . '">' . $versioniPad ['siPad'] . "</ipad>\n";
+$resultStr .= '		<iphone versiondate="' . preg_replace ( '/(.*)\.\d{3}$/', '$1', $versioniPhone ['dtCreated'] ) . '">' . $versioniPhone ['siPhone'] . "</iphone>\n";
+$resultStr .= '</dart_versions_list>' . "\n";
+// End
 $resultStr .= "</staticinfo>";
 echo $resultStr;
 dartLogging ( $currentScript, "  Success", $codeStr );

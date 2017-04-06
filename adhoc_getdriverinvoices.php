@@ -10,6 +10,7 @@ $badXML = <<< EOT
 </driverinvoices_invoice_list>
 EOT;
 
+/*
 // Browers on our local network get access to the pages, otherwise you have to have validated as an SP employee
 $dotted_ip_address = $_SERVER ['REMOTE_ADDR'];
 $ip_number = (ip2long ( $dotted_ip_address )) ? sprintf ( "%u", ip2long ( $dotted_ip_address ) ) : 0;
@@ -17,6 +18,7 @@ if ($ip_number < 1185397282 || $ip_number > 1185397309) {
 	echo "Action not allowed...";
 	exit ();
 }
+*/
 
 $userid = filter_input ( INPUT_GET, 'u', FILTER_VALIDATE_INT );
 if ($userid == FALSE || is_null ( $userid )) {

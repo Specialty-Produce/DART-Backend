@@ -4,8 +4,8 @@ $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 
 // APN constants
 $cert = array ();
-$cert ['d'] = 'include\DART_APN_DEV_Certificates.pem';
-$cert ['p'] = 'include\DART_PROD_Certificates.pem';
+$cert ['d'] = 'include\DART_APN_DEVEVELOPMENT_Certificates_160721.pem';
+$cert ['p'] = 'include\DART_APN_PRODUCTION_Certificates_160721.pem';
 $host = array ();
 $host ['d'] = 'gateway.sandbox.push.apple.com';
 $host ['p'] = 'gateway.push.apple.com';

@@ -65,8 +65,17 @@ try {
 $invoiceList = array ();
 foreach ( $routeInfo as $entry ) {
 	$lastUpdate = preg_replace ( '/(.*)\.\d{3}$/', '$1', $entry ['dtDartLastUpdated'] );
-	$invoiceList [$entry ['iSaleID']] = array ('saleID' => $entry ['iSaleID'], 'locID' => $entry ['iLocationDestinationID'], 'date' => strftime ( "%m/%d/%Y" ), 'lastupdate' => $lastUpdate,
-			'notes' => DART_escapeXmlString ( mb_convert_encoding ( $entry ['txtInvoiceNotes'], "UTF-8", "Windows-1252" ) ), 'po' => mb_convert_encoding ( $entry ['sPO'], "UTF-8", "Windows-1252" ), 'terms' => mb_convert_encoding ( $entry ['sTerms'], "UTF-8", "Windows-1252" ));
+	$packerLocation = (is_null($entry ['sPackerLocation'])) ? '' : mb_convert_encoding ( $entry ['sPackerLocation'], "UTF-8", "Windows-1252" );
+	$invoiceList [$entry ['iSaleID']] = array (
+			'saleID' => $entry ['iSaleID'], 
+			'locID' => $entry ['iLocationDestinationID'], 
+			'date' => strftime ( "%m/%d/%Y" ), 
+			'lastupdate' => $lastUpdate,
+			'notes' => DART_escapeXmlString ( mb_convert_encoding ( $entry ['txtInvoiceNotes'], "UTF-8", "Windows-1252" ) ), 
+			'po' => mb_convert_encoding ( $entry ['sPO'], "UTF-8", "Windows-1252" ), 
+			'terms' => mb_convert_encoding ( $entry ['sTerms'], "UTF-8", "Windows-1252" ),
+			'packerlocation' => $packerLocation
+	);
 	$invoiceList [$entry ['iSaleID']] ['items'] = array ();
 }
 

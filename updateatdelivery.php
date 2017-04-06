@@ -3,6 +3,9 @@ include_once 'global_CDC.php';
 include 'dart_init.php';
 $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 
+// Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
+$codeStr = generateRandomCode ( 6 );
+
 // On various errors and failures, we'll use the status BAD update XML
 $badXML = <<< EOT
 <?xml version="1.0"?>
@@ -12,7 +15,7 @@ EOT;
 
 // Get the POST data
 $appJSON = $_POST ['jsondata'];
-dartLogging ( $currentScript, "jsondata=" . $appJSON );
+dartLogging ( $currentScript, "jsondata=" . $appJSON, $codeStr );
 
 // appJSON
 if ($appJSON == FALSE || is_null ( $appJSON )) {
@@ -43,7 +46,7 @@ $saleIDs = json_decode ( $invJSON );
 if (count ( $saleIDs ) == 0) {
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : No saleids', $badXML );
 	echo $badXML;
-	dartLogging ( $currentScript, "no sale ids" );
+	dartLogging ( $currentScript, "no sale ids", $codeStr );
 	exit ();
 }
 
@@ -63,8 +66,11 @@ while ( $sqlFailed ) {
 		
 		// Prep for the XML version of invoice list for the stored procedure
 		$invXML = "<ROOT>\n";
-		foreach ( $saleIDs as $id )
-			$invXML .= '<Rec rID = "' . $id . '"/>' . "\n";
+		for($idx = 0; $idx < count ( $saleIDs ); $idx ++) {
+			$invXML .= '<Rec rID = "';
+			$invXML .= $saleIDs [$idx];
+			$invXML .= '"/>' . "\n";
+		}
 		$invXML .= "</ROOT>\n";
 		// dartLogging ( $currentScript, "invXML=" . $invXML );
 		$sql = "uspDARTDelivered $updateCode, $signerID, '" . $invXML . "'";
@@ -81,7 +87,8 @@ while ( $sqlFailed ) {
 		$errMsg = "SQL = $sql\n";
 		$eMessage = $e->getMessage ();
 		$errMsg .= $e->getFile () . ' (' . $e->getLine () . ')' . " sqlAttemptCount=$sqlAttemptCount : " . $eMessage;
-		$errMsg .= "\ninvXML = " . $invXML;
+		$errMsg .= "\n\ninvXML = " . $invXML;
+		$errMsg .= "\n\n\$codeStr = $codeStr";
 		SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 		if (preg_match ( '/Timeout expired/', $eMessage ) || preg_match ( '/SQL Server does not exist or access denied/', $eMessage ) || preg_match ( '/deadlock victim/', $eMessage )) {
 			if ($sqlAttemptCount < DART_SQL_TIMEOUT_MAX_TRIES) {
@@ -104,6 +111,7 @@ while ( $sqlFailed ) {
 
 if ($result === false) {
 	$errMsg = "uspDARTDelivered $updateCode, $invXML returned FALSE";
+	$errMsg .= "\n\n\$codeStr = $codeStr";
 	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
 	echo $badXML;
