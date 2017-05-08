@@ -13,6 +13,7 @@ define ( "DART_LOG_DIR", "C:/inetpub/wwwroot/Dart/logs/" );
 define ( "DART_PDF_DIR", "C:/Temp/invoicePDFs/" );
 define ( "DART_RSI_DIR", "C:/Temp/invoiceRSIs/" );
 define ( "DART_PPP_DIR", "C:/Temp/invoicePPPs/" );
+define ( "DART_CT_DIR", "C:/Temp/invoiceCTs/" );
 define ( "DART_HULA_DIR", "C:/inetpub/filezillaroot/RestaurantMatrix/outgoing/" );
 define ( "DART_SIG_DIR", "\\\\vServices\\dartsigs\$\\" );
 define ( "DART_FAX_DIR", "\\\\Server3\\DartFaxes\$\\" );

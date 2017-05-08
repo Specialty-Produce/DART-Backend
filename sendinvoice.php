@@ -9,6 +9,7 @@ require_once 'classes_SP/class_InvoiceRSI.php';
 require_once 'classes_SP/class_InvoiceHula.php';
 require_once 'classes_SP/class_InvoiceProfitProPlus.php';
 require_once 'classes_SP/class_InvoiceR365.php';
+require_once 'classes_SP/class_InvoiceCheftec.php';
 require_once 'EDI_SP.php';
 require_once 'classes_SP/class_SP_FTP.php';
 require_once 'PHPMailer5.2/PHPMailerAutoload.php';
@@ -43,6 +44,7 @@ $rsiMail = true;
 $hulaMail = true;
 $pppMail = true;
 $r365FTP = true;
+$cheftecMail = true;
 
 // $resendArray = array (3123888,3123662,3123908,3123956,3123321);
 
@@ -64,6 +66,7 @@ if ($adhoc) {
 	$rsiMail = false;
 	$hulaMail = false;
 	$pppMail = false;
+	$cheftecMail = false;
 }
 
 $useCOG = false;
@@ -77,6 +80,7 @@ $offLinePOcount = 1;
 $rsiID = 0;
 $hulaID = 0;
 $r365ID = '';
+$cheftecEmails = array ();
 $pppEmails = array ();
 try {
 	$dbh = new PDO ( 'spdb', '', '' );
@@ -190,6 +194,19 @@ try {
 	if ($adhoc) {
 		if ($debug) {
 			$r365ID = '';
+		}
+	}
+	
+	// Cheftec
+	$stmt = $dbh->query ( "SELECT iLocationID, tEmails FROM tblDartInvoiceSendCheftec WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+	$result = $stmt->fetch ( PDO::FETCH_ASSOC );
+	$cheftecEmails = ($result ['iLocationID'] > 0) ? explode ( ',', $result ['tEmails'] ) : array ();
+	$stmt->closeCursor ();
+	if ($adhoc) {
+		if ($debug) {
+			$cheftecEmails = array ();
+			if ($cheftecMail)
+				$cheftecEmails [] = array ('name' => $debugName, 'email' => $debugMail);
 		}
 	}
 	
@@ -793,6 +810,64 @@ if ($r365FTP) {
 } else {
 	if ($adhoc)
 		echo "NOT sending via FTP to R365...\n";
+}
+
+// Cheftec Invoices
+if ($cheftecMail) {
+	if ($adhoc)
+		echo "Sending via Cheftec...\n";
+	if (count ( $cheftecEmails ) > 0) {
+		// Start
+		$cheftecLocationName = $locInfo [$argv [1]] ['name'];
+		$mail->FromName = "Specialty Produce Accounting";
+		$mail->From = "ar@specialtyproduce.com";
+		$mail->Subject = "$cheftecLocationName : Specialty Produce Imported Invoice";
+		$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
+		// Add the body
+		$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " . $cheftecLocationName . "\n - Specialty Produce System";
+		
+		foreach ( $locInfo as $loc ) {
+			// Add the Addresses
+			foreach ( $cheftecEmails as $cheftecMailToAddress )
+				$mail->AddAddress ( $cheftecMailToAddress );
+			if ($debug)
+				$mail->AddBCC ( $debugMail, $debugName );
+			// Generate the file
+			$cheftecFileName = $loc ['saleID'] . '.csv';
+			$cheftecFile = DART_CT_DIR . $cheftecFileName;
+			$cheftecFH = fopen ( $cheftecFile, "w" );
+			
+			$invCT = new InvoiceCheftec ();
+			try {
+				$invCT->retrieveInvoice ( $loc ['saleID'] );
+				fwrite ( $cheftecFH, $invCT->generateCheftecOutput () );
+			} catch ( SP_Exception $spe ) {
+				$errMsg = "CT : Retrieve invoice error : " . $spe->getMessage ();
+				SP_errorLogging ( $errMsg, true, '', $currentScript . " - CT error" );
+				continue;
+			}
+			fclose ( $cheftecFH );
+			$mail->AddAttachment ( $cheftecFile, $cheftecFileName );
+		}
+		// Send the email
+		if (! $mail->Send ()) {
+			$errMsg = "CT : Send mail error : " . implode ( ',', $cheftecEmails );
+			SP_errorLogging ( $errMsg, true, '', $currentScript . " - CT error" );
+		}
+		$mail->ClearAllRecipients ();
+		$mail->ClearAttachments ();
+		sleep ( 3 );
+		foreach ( $locInfo as $loc ) {
+			$cheftecFileName = $loc ['saleID'] . '.csv';
+			$cheftecFile = DART_CT_DIR . $cheftecFileName;
+			// unlink ( $cheftecFile );
+		}
+	}
+	$mail->ClearAllRecipients ();
+	$mail->ClearAttachments ();
+} else {
+	if ($adhoc)
+		echo "NOT sending via CT...\n";
 }
 
 // Remove the PDFs
