@@ -51,7 +51,8 @@ try {
 $resultStr = '<?xml version="1.0"?>' . "\n";
 $resultStr .= '<pullreport_item_list status="success">' . "\n";
 foreach ( $pullReport as $entry ) {
-	$resultStr .= '<item rowcolor="' . $pullColors[$entry['iDARTColorCode']] . '">' . "\n";
+    $colorCode = ($entry['iDARTColorCode'] == null) ? 0 : $entry['iDARTColorCode'];
+    $resultStr .= '<item rowcolor="' . $pullColors[$colorCode] . '">' . "\n";
 	$resultStr .= "<description>" . mb_convert_encoding ( $entry['sDescription'], "UTF-8", "Windows-1252" ) . "</description>\n";
 	$resultStr .= "<productid>" . $entry['iProductID'] . "</productid>\n";
 	$resultStr .= "<quantity>" . $entry['Qty'] . "</quantity>\n";

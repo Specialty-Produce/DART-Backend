@@ -57,6 +57,13 @@ if (! preg_match ( '/,"userid":"\d+"}$/', $appJSON )) {
 
 // Good to go...
 $jd = json_decode ( $appJSON );
+if ($jd== FALSE || is_null ( $jd)) {
+    dartLogging ( $currentScript, "    decoded jsondata is FALSE or NULL : " . $_SERVER ['REMOTE_ADDR'] . " : " . $_SERVER ['HTTP_USER_AGENT'], $codeStr );
+    $badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid jsondata supplied', $badXML );
+    echo $badXML;
+    SP_ErrorLogging ( "Decoded JSON data is invalid for codeStr = $codeStr. Hand fix and adhoc enter data", true, DART_ERROR_LOG, "DART - Invalid JSON data" );
+    exit ();
+}
 
 // Done if the DEBUG user
 if ($jd->userid == DEBUG_USERID) {
@@ -165,7 +172,7 @@ while ( $sqlFailed ) {
 		// Prep for the XML version of invoice list for the stored procedure
 		$invXML = "<ROOT>\n";
 		foreach ( $jd->deliveryjson->invoice_list as $invoice )
-			$invXML .= '<Rec rID="' . $invoice->saleid . '" dtDelTime="' . $invoice->signtimestamp . '.000"/>' . "\n";
+			$invXML .= '<Rec rID="' . $invoice->saleid . '" dtDelTime="' . $invoice->signtimestamp . '"/>' . "\n";
 		$invXML .= "</ROOT>";
 		
 		// Check if this is a repeat call to deliverycomplete.php
@@ -278,6 +285,7 @@ while ( $sqlFailed ) {
 		$errMsg = "SQL = $sql\n";
 		$eMessage = $e->getMessage ();
 		$errMsg .= $e->getFile () . ' (' . $e->getLine () . ')' . " sqlAttemptCount=$sqlAttemptCount : " . $eMessage;
+		$errMsg .= "\n\ncodeStr = $codeStr\n";
 		$errMsg .= "\ninvXML = " . $invXML;
 		SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 		if (preg_match ( '/Timeout expired/', $eMessage ) || preg_match ( '/SQL Server does not exist or access denied/', $eMessage ) || preg_match ( '/deadlock victim/', $eMessage )) {

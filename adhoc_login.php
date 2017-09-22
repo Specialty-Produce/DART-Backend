@@ -22,7 +22,7 @@ if (isset ( $_POST ['jsondata'] )) {
 }
 */
 
-$jsondata = '{"password":"meat","username":"jacksonc","udid":"7500077b1df5535132be9d4935fcf44e7b976f36","version":"Version 1.0 (Build 68)"}';
+$jsondata = '{"password":"asd","username":"roger","udid":"7500077b1df5535132be9d4935fcf44e7b976f36","version":"Version 1.0 (Build 68)"}';
 
 // Decode the app data
 $jd = json_decode ( $jsondata );

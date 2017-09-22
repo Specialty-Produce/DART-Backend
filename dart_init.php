@@ -18,6 +18,9 @@ define ( "DART_HULA_DIR", "C:/inetpub/filezillaroot/RestaurantMatrix/outgoing/" 
 define ( "DART_SIG_DIR", "\\\\vServices\\dartsigs\$\\" );
 define ( "DART_FAX_DIR", "\\\\Server3\\DartFaxes\$\\" );
 
+// Silent Fax
+define ( "SILENT_FAX_DIR", "\\\\SilentFax\\AIX_WOutbox\\" );
+
 // For use by the XFresh invoice retrieval
 define ( "SCAN_INVOICE_DIR", "\\\\vServices\\invoices\$\\" );
 
