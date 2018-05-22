@@ -6,8 +6,14 @@ $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 // On various errors and failures, we'll use the status BAD update XML
 $badXML = <<< EOT
 <?xml version="1.0"?>
-<updateinvoices status="failed" retry="true" errmsg="XXX">
-</updateinvoices>
+<unupdateinvoices status="failed" retry="false" errmsg="XXX">
+</unupdateinvoices>
+EOT;
+
+$goodXML = <<< EOT
+<?xml version="1.0"?>
+<unupdateinvoices status="success">
+</unupdateinvoices>
 EOT;
 
 // Get the POST data
@@ -69,6 +75,7 @@ try {
 	$errMsg = $e->getFile () . ' (' . $e->getLine () . ')' . $e->getMessage ();
 	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
+	$badXML = preg_replace ( '/false/', 'true', $badXML );
 	echo $badXML;
 	exit ();
 }
@@ -77,14 +84,11 @@ if ($result === false) {
 	$errMsg = "uspDARTDelivered $updateCode, $invXML returned FALSE";
 	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
+	$badXML = preg_replace ( '/false/', 'true', $badXML );
 	echo $badXML;
 	exit ();
 }
 
-// Generate the XML
-$resultStr = '<?xml version="1.0"?>' . "\n";
-$resultStr .= '<unupdateinvoices status="success">' . "\n";
-$resultStr .= '</unupdateinvoices>' . "\n";
-echo $resultStr;
+echo $goodXML;
 exit ();
 ?>
