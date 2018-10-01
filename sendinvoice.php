@@ -112,6 +112,7 @@ try {
 		$isDarkStop = ($row ['iSigner'] == DARK_STOP_ID) ? true : false;
 		// Determine if this is an offline PO for an EDI
 		$ediID = trim ( $row ['sInterchangeID'] );
+		$parentFTP = ($row ['sParentFTPFolder'] == null) ? '' : trim ( $row ['sParentFTPFolder'] );
 		$POnumber = trim ( $row ['sPO'] );
 		if (strlen ( $ediID ) > 0 && strlen ( $POnumber ) == 0) {
 			$requireEDIPO = constant ( 'EDISPConsts::' . $ediID . "_REQUIREPO" );
@@ -142,6 +143,7 @@ try {
 				'deldate' => $deliveryDate,
 				'greenYTD' => $row ['mYTD'],
 				'ediID' => $ediID,
+				'parentFTP' => $parentFTP,
 				'showProdID' => $showProdID 
 		);
 	}
@@ -750,7 +752,9 @@ EOT;
 				continue;
 			}
 			$outFileName = 'O_SP_' . date ( 'ymd_His' ) . '.810';
-			$outPath = EDISPConsts::FTP_ROOT . $loc ['ediID'] . '\\outgoing\\';
+			$outPath = EDISPConsts::FTP_ROOT;
+			$outPath .= (strlen ( $loc ['parentFTP'] ) > 0) ? $loc ['parentFTP'] . '\\' : '';
+			$outPath .= $loc ['ediID'] . '\\outgoing\\';
 			$outFile = $outPath . $outFileName;
 			if (! file_put_contents ( $outFile, $msg )) {
 				$errMsg = "Error writing outgoing 810 : $outFile" . "\nfor invoice # " . $loc ['saleID'];
@@ -979,6 +983,8 @@ if ($bevagerFTP) {
 				$bevagerFH = fopen ( $bevagerFile, "w" );
 				fwrite ( $bevagerFH, $bevString );
 				fclose ( $bevagerFH );
+				// $errMsg = "Bevager : $bevFilename : " . $bevString;
+				// SP_errorLogging ( $errMsg, true, '', $currentScript . " - Bevager Data" );
 			} catch ( SP_Exception $spe ) {
 				$errMsg = "Bevager : Retrieve invoice error : " . $spe->getMessage ();
 				SP_errorLogging ( $errMsg, true, '', $currentScript . " - Bevager error" );

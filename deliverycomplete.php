@@ -66,11 +66,19 @@ if ($invoiceBadJSON !== false && preg_match ( '/"saleid":"' . $invoiceBadJSON . 
 // Good to go...
 $jd = json_decode ( $appJSON );
 if ($jd == FALSE || is_null ( $jd )) {
-	dartLogging ( $currentScript, "    decoded jsondata is FALSE or NULL : " . $_SERVER ['REMOTE_ADDR'] . " : " . $_SERVER ['HTTP_USER_AGENT'], $codeStr );
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid jsondata supplied', $badXML );
-	echo $badXML;
-	SP_ErrorLogging ( "Decoded JSON data is invalid for codeStr = $codeStr. Hand fix and adhoc enter data", true, DART_ERROR_LOG, "DART - $currentScript - Invalid JSON data" );
-	exit ();
+	// Capture bad JSON data that has been fixed already...
+	if (strpos ( $appJSON, '"saleid":"4095326"' ) !== false) {
+		dartLogging ( $currentScript, "    FIXED decoded jsondata is FALSE or NULL : " . $_SERVER ['REMOTE_ADDR'] . " : " . $_SERVER ['HTTP_USER_AGENT'], $codeStr );
+		echo $successXML;
+		SP_ErrorLogging ( "Decoded JSON data is invalid for codeStr = $codeStr. FIXED", true, DART_ERROR_LOG, "DART - $currentScript - Invalid JSON data" );
+		exit ();
+	} else {
+		dartLogging ( $currentScript, "    decoded jsondata is FALSE or NULL : " . $_SERVER ['REMOTE_ADDR'] . " : " . $_SERVER ['HTTP_USER_AGENT'], $codeStr );
+		$badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid jsondata supplied', $badXML );
+		echo $badXML;
+		SP_ErrorLogging ( "Decoded JSON data is invalid for codeStr = $codeStr. Hand fix and adhoc enter data", true, DART_ERROR_LOG, "DART - $currentScript - Invalid JSON data" );
+		exit ();
+	}
 }
 
 // Done if the DEBUG user
@@ -317,7 +325,7 @@ while ( $sqlFailed ) {
 }
 
 if ($resultDelivered === false) {
-	$errMsg = "uspDARTDelivered $updateCode, $signerID, $invXML returned FALSE";
+	$errMsg = "uspDARTDelivered $updateCode, $signerID, $invXML returned FALSE : $codeStr";
 	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 	dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
@@ -326,7 +334,7 @@ if ($resultDelivered === false) {
 }
 
 if ($resultUpdateChanges === false) {
-	$errMsg = "uspDARTDeliveryCompleteUpdates $saleDetailXML returned FALSE";
+	$errMsg = "uspDARTDeliveryCompleteUpdates $saleDetailXML returned FALSE : $codeStr";
 	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 	dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
@@ -335,7 +343,7 @@ if ($resultUpdateChanges === false) {
 }
 
 if ($resultDeliveryFail === false) {
-	$errMsg = "uspDARTUpdateAtDeliveryFail $updateAtDeliveryFailXML returned FALSE";
+	$errMsg = "uspDARTUpdateAtDeliveryFail $updateAtDeliveryFailXML returned FALSE : $codeStr";
 	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 	dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );

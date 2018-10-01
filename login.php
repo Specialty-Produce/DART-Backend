@@ -108,11 +108,11 @@ $resultStr .= "<userlname>" . mb_convert_encoding ( $result ['txtLastName'], "UT
 if ($result ['iUserID'] == DEBUG_USERID) {
 	$resultStr .= "<gpsdatafrequency>1</gpsdatafrequency>\n"; // Minutes
 	$resultStr .= "<gpsaccuracy>50</gpsaccuracy>\n"; // Meters
-	$resultStr .= "<gpsreportinterval>5</gpsreportinterval>\n"; // Minutes
+	$resultStr .= "<gpsreportinterval>5</gpsreportinterval>\n"; // # of points to accumulate before reporting
 } else {
 	$resultStr .= "<gpsdatafrequency>" . $result ['GPSFrequency'] . "</gpsdatafrequency>\n"; // Minutes
 	$resultStr .= "<gpsaccuracy>" . $result ['GPSAccuracy'] . "</gpsaccuracy>\n"; // Meters
-	$resultStr .= "<gpsreportinterval>" . $result ['GPSReporting'] . "</gpsreportinterval>\n"; // Minutes
+	$resultStr .= "<gpsreportinterval>" . $result ['GPSReporting'] . "</gpsreportinterval>\n"; // # of points to accumulate before reporting
 }
 $resultStr .= "</loginresponse>";
 echo $resultStr;

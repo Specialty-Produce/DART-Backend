@@ -15,8 +15,9 @@ $dartSession = filter_input ( INPUT_POST, 'dartsessionid', FILTER_SANITIZE_NUMBE
 $udid = filter_input ( INPUT_POST, 'udid', FILTER_SANITIZE_STRING );
 $webservice = filter_input ( INPUT_POST, 'webservice', FILTER_SANITIZE_STRING );
 $returnedxml = filter_input ( INPUT_POST, 'returnedxml', FILTER_SANITIZE_STRING );
+$misc = filter_input ( INPUT_POST, 'misc', FILTER_SANITIZE_STRING );
 
-$errMsg = "errorreport ($udid): $webservice - $userid / $dartSession\n$returnedxml";
+$errMsg = "errorreport ($udid): $webservice - $userid / $dartSession\n$returnedxml\n$misc";
 dartLogging ( $currentScript, $errMsg );
 // Write to PHP logs folder
 $timeStamp = date ( '[d-M-Y H:i:s]' );

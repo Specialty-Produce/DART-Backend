@@ -1,5 +1,6 @@
 <?php
 include_once 'global_CDC.php';
+include_once 'classes_SP/class_DART.php';
 include 'dart_init.php';
 $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 
@@ -111,5 +112,7 @@ while ( $sqlFailed ) {
 }
 
 echo $successXML;
+
+DART::click ( 3, $dartSession, 0, $userid, 0, '', '', '', '', '', 0 );
 exit ();
 ?>
