@@ -91,207 +91,226 @@ $bevagerIDs = array ();
 $cheftecEmails = array ();
 $plateIQEmail = '';
 $pppEmails = array ();
-try {
-	$dbh = new PDO ( 'spdb', '', '' );
-	// set the error reporting attribute.
-	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-	
-	// The XML to get the invoice info
-	$invXML = "<ROOT>\n";
-	for($i = 1; $i < count ( $argv ); $i ++)
-		$invXML .= '<Rec rID="' . $argv [$i] . '"/>' . "\n";
-	$invXML .= "</ROOT>\n";
-	if ($adhoc) {
-		echo "\$invXML = " . htmlentities ( $invXML ) . "\n";
-	}
-	// Get the info
-	$stmt = $dbh->query ( "uspDARTSendInvoiceInfo '" . $invXML . "'" );
-	foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
-		$shipDate = date ( 'n/j/Y', strtotime ( $row ['dtShip'] ) );
-		$deliveryDate = date ( 'n/j/Y g:i:s A', strtotime ( $row ['dtDartDelivered'] ) );
-		$isDarkStop = ($row ['iSigner'] == DARK_STOP_ID) ? true : false;
-		// Determine if this is an offline PO for an EDI
-		$ediID = trim ( $row ['sInterchangeID'] );
-		$parentFTP = ($row ['sParentFTPFolder'] == null) ? '' : trim ( $row ['sParentFTPFolder'] );
-		$POnumber = trim ( $row ['sPO'] );
-		if (strlen ( $ediID ) > 0 && strlen ( $POnumber ) == 0) {
-			$requireEDIPO = constant ( 'EDISPConsts::' . $ediID . "_REQUIREPO" );
-			if ($requireEDIPO != null) {
-				$POnumber = 'SP-' . date ( 'ymdHi' ) . '-' . sprintf ( "%02d", $offLinePOcount );
-				$offLinePOs [$row ['iSaleID']] = $POnumber;
-				$offLinePOcount ++;
-			}
+$sqlFailed = true;
+$sqlAttemptCount = 1;
+$invXML = '';
+while ( $sqlFailed ) {
+	$sqlFailed = false;
+	try {
+		$dbh = new PDO ( 'spdb', '', '' );
+		// set the error reporting attribute.
+		$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
+		
+		// The XML to get the invoice info
+		$invXML = "<ROOT>\n";
+		for($i = 1; $i < count ( $argv ); $i ++)
+			$invXML .= '<Rec rID="' . $argv [$i] . '"/>' . "\n";
+		$invXML .= "</ROOT>\n";
+		if ($adhoc) {
+			echo "\$invXML = " . htmlentities ( $invXML ) . "\n";
 		}
-		$showProdID = ($row ['iShowProductID'] == - 1) ? true : false;
-		$locInfo [$row ['iSaleID']] = array (
-				'id' => $row ['iLocationDestinationID'],
-				'saleID' => $row ['iSaleID'],
-				'name' => $row ['sDescription'],
-				'address' => $row ['sAddress1'],
-				'city' => $row ['sCity'],
-				'state' => $row ['sState'],
-				'zip' => $row ['sPostalCode'],
-				'phone' => $row ['sPhone'],
-				'salesperson' => $row ['txtSalesPerson'],
-				'salesphone' => $row ['txtCellPhone'],
-				'salesemail' => $row ['txtSalesEmail'],
-				'terms' => $row ['sTerms'],
-				'po' => $POnumber,
-				'darkstop' => $isDarkStop,
-				'signer' => $row ['txtSigner'],
-				'shipdate' => $shipDate,
-				'deldate' => $deliveryDate,
-				'greenYTD' => $row ['mYTD'],
-				'ediID' => $ediID,
-				'parentFTP' => $parentFTP,
-				'showProdID' => $showProdID 
-		);
-	}
-	$stmt->closeCursor ();
-	
-	// Get the emails
-	$stmt = $dbh->query ( "SELECT sEmail, sDescription FROM tblDartInvoiceSendEmails WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
-	foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row )
-		$sendEmails [] = array (
-				'name' => $row ['sDescription'],
-				'email' => $row ['sEmail'] 
-		);
-	$stmt->closeCursor ();
-	if ($adhoc) {
-		if ($debug) {
-			$sendEmails = array ();
-			if ($pdfMail)
+		// Get the info
+		$stmt = $dbh->query ( "uspDARTSendInvoiceInfo '" . $invXML . "'" );
+		foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
+			$shipDate = date ( 'n/j/Y', strtotime ( $row ['dtShip'] ) );
+			$deliveryDate = date ( 'n/j/Y g:i:s A', strtotime ( $row ['dtDartDelivered'] ) );
+			$isDarkStop = ($row ['iSigner'] == DARK_STOP_ID) ? true : false;
+			// Determine if this is an offline PO for an EDI
+			$ediID = trim ( $row ['sInterchangeID'] );
+			$parentFTP = ($row ['sParentFTPFolder'] == null) ? '' : trim ( $row ['sParentFTPFolder'] );
+			$POnumber = trim ( $row ['sPO'] );
+			if (strlen ( $ediID ) > 0 && strlen ( $POnumber ) == 0) {
+				$requireEDIPO = constant ( 'EDISPConsts::' . $ediID . "_REQUIREPO" );
+				if ($requireEDIPO != null) {
+					$POnumber = 'SP-' . date ( 'ymdHi' ) . '-' . sprintf ( "%02d", $offLinePOcount );
+					$offLinePOs [$row ['iSaleID']] = $POnumber;
+					$offLinePOcount ++;
+				}
+			}
+			$showProdID = ($row ['iShowProductID'] == - 1) ? true : false;
+			$add2 = ($row ['sAddress2'] == null) ? '' : "\n" . trim($row ['sAddress2']);
+			$locInfo [$row ['iSaleID']] = array (
+					'id' => $row ['iLocationDestinationID'],
+					'saleID' => $row ['iSaleID'],
+					'name' => $row ['sDescription'],
+					'address' => $row ['sAddress1'] . $add2,
+					'city' => $row ['sCity'],
+					'state' => $row ['sState'],
+					'zip' => $row ['sPostalCode'],
+					'phone' => $row ['sPhone'],
+					'salesperson' => $row ['txtSalesPerson'],
+					'salesphone' => $row ['txtCellPhone'],
+					'salesemail' => $row ['txtSalesEmail'],
+					'terms' => $row ['sTerms'],
+					'po' => $POnumber,
+					'darkstop' => $isDarkStop,
+					'signer' => $row ['txtSigner'],
+					'shipdate' => $shipDate,
+					'deldate' => $deliveryDate,
+					'greenYTD' => $row ['mYTD'],
+					'ediID' => $ediID,
+					'parentFTP' => $parentFTP,
+					'showProdID' => $showProdID 
+			);
+		}
+		$stmt->closeCursor ();
+		
+		// Get the emails
+		$stmt = $dbh->query ( "SELECT sEmail, sDescription FROM tblDartInvoiceSendEmails WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+		foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row )
+			$sendEmails [] = array (
+					'name' => $row ['sDescription'],
+					'email' => $row ['sEmail'] 
+			);
+		$stmt->closeCursor ();
+		if ($adhoc) {
+			if ($debug) {
+				$sendEmails = array ();
+				if ($pdfMail)
+					$sendEmails [] = array (
+							'name' => $debugName,
+							'email' => $debugMail 
+					);
+			}
+		} else {
+			if ($debug)
 				$sendEmails [] = array (
 						'name' => $debugName,
 						'email' => $debugMail 
 				);
 		}
-	} else {
-		if ($debug)
-			$sendEmails [] = array (
-					'name' => $debugName,
-					'email' => $debugMail 
+		
+		// Get the faxes
+		$stmt = $dbh->query ( "SELECT sFax, sDescription FROM tblDartInvoiceSendFaxes WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+		foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row )
+			$sendFaxes [] = array (
+					'name' => $row ['sDescription'],
+					'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $row ['sFax'] ),
+					'faxSilent' => preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '$1-$2-$3', $row ['sFax'] ) 
 			);
-	}
-	
-	// Get the faxes
-	$stmt = $dbh->query ( "SELECT sFax, sDescription FROM tblDartInvoiceSendFaxes WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
-	foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row )
-		$sendFaxes [] = array (
-				'name' => $row ['sDescription'],
-				'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $row ['sFax'] ),
-				'faxSilent' => preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '$1-$2-$3', $row ['sFax'] ) 
-		);
-	$stmt->closeCursor ();
-	if ($adhoc) {
-		if ($debug) {
-			$sendFaxes = array ();
-			if ($pdfFax)
+		$stmt->closeCursor ();
+		if ($adhoc) {
+			if ($debug) {
+				$sendFaxes = array ();
+				if ($pdfFax)
+					$sendFaxes [] = array (
+							'name' => $debugName,
+							'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $debugFax ) 
+					);
+			}
+		} else {
+			if ($debug && strlen ( $debugFax ) == 10)
 				$sendFaxes [] = array (
 						'name' => $debugName,
 						'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $debugFax ) 
 				);
 		}
-	} else {
-		if ($debug && strlen ( $debugFax ) == 10)
-			$sendFaxes [] = array (
-					'name' => $debugName,
-					'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $debugFax ) 
-			);
-	}
-	
-	// RSI ID
-	$stmt = $dbh->query ( "SELECT iRSIID FROM tblDartInvoiceSendRSI WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
-	$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-	$rsiID = ($result ['iRSIID'] > 0) ? $result ['iRSIID'] : 0;
-	$stmt->closeCursor ();
-	if ($adhoc) {
-		if ($debug) {
-			$rsiID = 0;
+		
+		// RSI ID
+		$stmt = $dbh->query ( "SELECT iRSIID FROM tblDartInvoiceSendRSI WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+		$result = $stmt->fetch ( PDO::FETCH_ASSOC );
+		$rsiID = ($result ['iRSIID'] > 0) ? $result ['iRSIID'] : 0;
+		$stmt->closeCursor ();
+		if ($adhoc) {
+			if ($debug) {
+				$rsiID = 0;
+			}
+		}
+		
+		// Hula ID
+		$stmt = $dbh->query ( "SELECT iLocationID FROM tblDartInvoiceSendHula WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+		$result = $stmt->fetch ( PDO::FETCH_ASSOC );
+		$hulaID = ($result ['iLocationID'] > 0) ? $result ['iLocationID'] : 0;
+		$stmt->closeCursor ();
+		if ($adhoc) {
+			if ($debug) {
+				$hulaID = 0;
+			}
+		}
+		
+		// Profit Pro Plus
+		$stmt = $dbh->query ( "SELECT iLocationID, tEmails FROM tblDartInvoiceSendProfitProPlus WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+		$result = $stmt->fetch ( PDO::FETCH_ASSOC );
+		$pppEmails = ($result ['iLocationID'] > 0) ? explode ( ',', $result ['tEmails'] ) : array ();
+		$stmt->closeCursor ();
+		if ($adhoc) {
+			if ($debug) {
+				$pppEmails = array ();
+				if ($pppMail)
+					$pppEmails [] = array (
+							'name' => $debugName,
+							'email' => $debugMail 
+					);
+			}
+		}
+		
+		// Restaurant 365
+		$stmt = $dbh->query ( "SELECT sR365ID, sFTPUsername, sFTPPassword, sFTPFolder FROM tblDartInvoiceSendR365 WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+		$r365Data = $stmt->fetchAll ( PDO::FETCH_ASSOC );
+		$stmt->closeCursor ();
+		if ($adhoc) {
+			if ($debug) {
+				$r365Data = array ();
+			}
+		}
+		
+		// Bevager
+		$stmt = $dbh->query ( "SELECT iLocationID FROM tblDartInvoiceSendBevager WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+		$bevagerIDs = $stmt->fetchAll ( PDO::FETCH_ASSOC );
+		$stmt->closeCursor ();
+		if ($adhoc) {
+			if ($debug) {
+				$bevagerIDs = array ();
+			}
+		}
+		
+		// Cheftec
+		$stmt = $dbh->query ( "SELECT iLocationID, tEmails FROM tblDartInvoiceSendCheftec WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+		$result = $stmt->fetch ( PDO::FETCH_ASSOC );
+		$cheftecEmails = ($result ['iLocationID'] > 0) ? explode ( ',', $result ['tEmails'] ) : array ();
+		$stmt->closeCursor ();
+		if ($adhoc) {
+			if ($debug) {
+				$cheftecEmails = array ();
+				if ($cheftecMail)
+					$cheftecEmails [] = array (
+							'name' => $debugName,
+							'email' => $debugMail 
+					);
+			}
+		}
+		
+		// PlateIQ
+		$stmt = $dbh->query ( "SELECT iLocationID, sEmail FROM tblDartInvoiceSendPlateIQ WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+		$result = $stmt->fetch ( PDO::FETCH_ASSOC );
+		$plateIQEmail = ($result ['iLocationID'] > 0) ? $result ['sEmail'] : '';
+		$stmt->closeCursor ();
+		if ($adhoc) {
+			if ($debug) {
+				$plateIQEmail = '';
+				if ($plateIQMail)
+					$plateIQEmail = $debugMail;
+			}
+		}
+		
+		$dbh = null;
+	} catch ( PDOException $e ) {
+		$eMessage = $e->getMessage ();
+		$errMsg .= $e->getFile () . ' (' . $e->getLine () . ')' . " sqlAttemptCount=$sqlAttemptCount : " . $eMessage;
+		$errMsg .= "\ninvXML = " . $invXML;
+		SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, 'sendinvoice.php DB' );
+		if (preg_match ( '/Timeout expired/', $eMessage ) || preg_match ( '/SQL Server does not exist or access denied/', $eMessage ) || preg_match ( '/deadlock victim/', $eMessage ) || preg_match ( '/Schema changed/', $eMessage )) {
+			if ($sqlAttemptCount < DART_SQL_TIMEOUT_MAX_TRIES) {
+				$sqlAttemptCount ++;
+				$sqlFailed = true;
+				sleep ( DART_SQL_TIMEOUT_SLEEP );
+			} else {
+				exit ();
+			}
+		} else {
+			exit ();
 		}
 	}
-	
-	// Hula ID
-	$stmt = $dbh->query ( "SELECT iLocationID FROM tblDartInvoiceSendHula WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
-	$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-	$hulaID = ($result ['iLocationID'] > 0) ? $result ['iLocationID'] : 0;
-	$stmt->closeCursor ();
-	if ($adhoc) {
-		if ($debug) {
-			$hulaID = 0;
-		}
-	}
-	
-	// Profit Pro Plus
-	$stmt = $dbh->query ( "SELECT iLocationID, tEmails FROM tblDartInvoiceSendProfitProPlus WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
-	$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-	$pppEmails = ($result ['iLocationID'] > 0) ? explode ( ',', $result ['tEmails'] ) : array ();
-	$stmt->closeCursor ();
-	if ($adhoc) {
-		if ($debug) {
-			$pppEmails = array ();
-			if ($pppMail)
-				$pppEmails [] = array (
-						'name' => $debugName,
-						'email' => $debugMail 
-				);
-		}
-	}
-	
-	// Restaurant 365
-	$stmt = $dbh->query ( "SELECT sR365ID, sFTPUsername, sFTPPassword, sFTPFolder FROM tblDartInvoiceSendR365 WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
-	$r365Data = $stmt->fetchAll ( PDO::FETCH_ASSOC );
-	$stmt->closeCursor ();
-	if ($adhoc) {
-		if ($debug) {
-			$r365Data = array ();
-		}
-	}
-	
-	// Bevager
-	$stmt = $dbh->query ( "SELECT iLocationID FROM tblDartInvoiceSendBevager WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
-	$bevagerIDs = $stmt->fetchAll ( PDO::FETCH_ASSOC );
-	$stmt->closeCursor ();
-	if ($adhoc) {
-		if ($debug) {
-			$bevagerIDs = array ();
-		}
-	}
-	
-	// Cheftec
-	$stmt = $dbh->query ( "SELECT iLocationID, tEmails FROM tblDartInvoiceSendCheftec WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
-	$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-	$cheftecEmails = ($result ['iLocationID'] > 0) ? explode ( ',', $result ['tEmails'] ) : array ();
-	$stmt->closeCursor ();
-	if ($adhoc) {
-		if ($debug) {
-			$cheftecEmails = array ();
-			if ($cheftecMail)
-				$cheftecEmails [] = array (
-						'name' => $debugName,
-						'email' => $debugMail 
-				);
-		}
-	}
-	
-	// PlateIQ
-	$stmt = $dbh->query ( "SELECT iLocationID, sEmail FROM tblDartInvoiceSendPlateIQ WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
-	$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-	$plateIQEmail = ($result ['iLocationID'] > 0) ? $result ['sEmail'] : '';
-	$stmt->closeCursor ();
-	if ($adhoc) {
-		if ($debug) {
-			$plateIQEmail = '';
-			if ($plateIQMail)
-				$plateIQEmail = $debugMail;
-		}
-	}
-	
-	$dbh = null;
-} catch ( PDOException $e ) {
-	$errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $e->getMessage ();
-	SP_ErrorLogging ( $errorTxt, true, DART_ERROR_LOG );
-	exit ();
 }
 
 // Get the COG Accounts information
@@ -314,83 +333,100 @@ if ($pdfMail || $pdfFax) {
 		$lineItems = array ();
 		$invTotal = 0.0;
 		$trackInvoiceEdits = array ();
-		try {
-			$dbh = new PDO ( 'spdb', '', '' );
-			// set the error reporting attribute.
-			$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-			
-			// Get the line items of the invoice.
-			$sql = "uspWebXFInvoiceDetail " . $invNum;
-			$stmt = $dbh->query ( $sql );
-			foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
-				$itemTotal = preg_replace ( '/^\$/', '', $row ['Total'] );
-				$invTotal += $itemTotal;
-				if ($useCOG) {
-					$cogID = (array_key_exists ( $row ['iProductID'], $cogExceptionProduct )) ? $cogExceptionProduct [$row ['iProductID']] : $row ['iCOGMasterID'];
-					$cogAccount = ($cogMaster [$cogID] != null && $cogMaster [$cogID] != 0) ? $cogMaster [$cogID] : 0;
-					$cogLocation [$cogAccount] ['count'] += 1;
-					$cogLocation [$cogAccount] ['total'] += $itemTotal;
-				} else {
-					$cogAccount = '';
+		$sqlFailed = true;
+		$sqlAttemptCount = 1;
+		while ( $sqlFailed ) {
+			$sqlFailed = false;
+			try {
+				$dbh = new PDO ( 'spdb', '', '' );
+				// set the error reporting attribute.
+				$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
+				
+				// Get the line items of the invoice.
+				$sql = "uspWebXFInvoiceDetail " . $invNum;
+				$stmt = $dbh->query ( $sql );
+				foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
+					$itemTotal = preg_replace ( '/^\$/', '', $row ['Total'] );
+					$invTotal += $itemTotal;
+					if ($useCOG) {
+						$cogID = (array_key_exists ( $row ['iProductID'], $cogExceptionProduct )) ? $cogExceptionProduct [$row ['iProductID']] : $row ['iCOGMasterID'];
+						$cogAccount = ($cogMaster [$cogID] != null && $cogMaster [$cogID] != 0) ? $cogMaster [$cogID] : 0;
+						$cogLocation [$cogAccount] ['count'] += 1;
+						$cogLocation [$cogAccount] ['total'] += $itemTotal;
+					} else {
+						$cogAccount = '';
+					}
+					if ($row ['iProductID'] == 9997)
+						$lineItems [] = array (
+								'prodID' => 9997,
+								'unitID' => 'ea',
+								'description' => 'Green Discount ...',
+								'ordered' => 1,
+								'shipped' => 1,
+								'unitPrice' => sprintf ( "%0.2f", $itemTotal ),
+								'itemTotal' => $itemTotal,
+								'status' => '',
+								'cogAccount' => $cogAccount 
+						);
+					else
+						$lineItems [] = array (
+								'description' => $row ['Description'],
+								'ordered' => round ( $row ['fOrderQuantity'], 2 ),
+								'shipped' => round ( $row ['fShipQuantity'], 2 ),
+								'unitPrice' => sprintf ( "%0.2f", $row ['mUnitPrice'] ),
+								'itemTotal' => $itemTotal,
+								'status' => $row ['Status'],
+								'prodID' => $row ['iProductID'],
+								'cogAccount' => $cogAccount 
+						);
 				}
-				if ($row ['iProductID'] == 9997)
-					$lineItems [] = array (
-							'prodID' => 9997,
-							'unitID' => 'ea',
-							'description' => 'Green Discount ...',
-							'ordered' => 1,
-							'shipped' => 1,
-							'unitPrice' => sprintf ( "%0.2f", $itemTotal ),
-							'itemTotal' => $itemTotal,
-							'status' => '',
-							'cogAccount' => $cogAccount 
+				$stmt->closeCursor ();
+				
+				// Get the tracking info for initial entry
+				$sql = "uspWebXFInvoiceTrackingInfo " . $invNum;
+				$stmt = $dbh->query ( $sql );
+				foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
+					$ts = preg_replace ( '/^(.*) (\d+):(\d+):\d+:\d+(.)$/', '$1 $2:$3 $4M', $row ['TimePlace'] );
+					$trackInvoiceEntry = array (
+							'source' => $row ['OrderSource'],
+							'timeStamp' => date ( 'M j, Y g:i A', strtotime ( $ts ) ),
+							'driver' => $row ['Driver'],
+							'packer' => $row ['Packer'],
+							'orderTaker' => $row ['OrderedTaker'],
+							'ooUser' => $row ['UserNameOrdered'] 
 					);
-				else
-					$lineItems [] = array (
-							'description' => $row ['Description'],
-							'ordered' => round ( $row ['fOrderQuantity'], 2 ),
-							'shipped' => round ( $row ['fShipQuantity'], 2 ),
-							'unitPrice' => sprintf ( "%0.2f", $row ['mUnitPrice'] ),
-							'itemTotal' => $itemTotal,
-							'status' => $row ['Status'],
-							'prodID' => $row ['iProductID'],
-							'cogAccount' => $cogAccount 
+				}
+				$stmt->closeCursor ();
+				
+				// Get the tracking info for edits
+				$sql = "uspWebXFInvoiceTrackingEdits " . $invNum;
+				$stmt = $dbh->query ( $sql );
+				foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
+					$trackInvoiceEdits [] = array (
+							'modifiedBy' => $row ['ModifiedBy'],
+							'timeStamp' => $row ['TimeModified'] 
 					);
+				}
+				$stmt->closeCursor ();
+				
+				$dbh = null;
+			} catch ( PDOException $e ) {
+				$eMessage = $e->getMessage ();
+				$errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $e->getMessage ();
+				$errorTxt .= "\n\n\$sqlAttemptCount = $sqlAttemptCount";
+				SP_ErrorLogging ( $errorTxt, true, DART_ERROR_LOG );
+				if (preg_match ( '/Timeout expired/', $eMessage ) || preg_match ( '/SQL Server does not exist or access denied/', $eMessage ) || preg_match ( '/deadlock victim/', $eMessage ) || preg_match ( '/Schema changed/', $eMessage )) {
+					if ($sqlAttemptCount < DART_SQL_TIMEOUT_MAX_TRIES) {
+						$sqlAttemptCount ++;
+						$sqlFailed = true;
+						sleep ( DART_SQL_TIMEOUT_SLEEP );
+					} else {
+						exit ();
+					}
+				} else {
+					exit ();
+				}
 			}
-			$stmt->closeCursor ();
-			
-			// Get the tracking info for initial entry
-			$sql = "uspWebXFInvoiceTrackingInfo " . $invNum;
-			$stmt = $dbh->query ( $sql );
-			foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
-				$ts = preg_replace ( '/^(.*) (\d+):(\d+):\d+:\d+(.)$/', '$1 $2:$3 $4M', $row ['TimePlace'] );
-				$trackInvoiceEntry = array (
-						'source' => $row ['OrderSource'],
-						'timeStamp' => date ( 'M j, Y g:i A', strtotime ( $ts ) ),
-						'driver' => $row ['Driver'],
-						'packer' => $row ['Packer'],
-						'orderTaker' => $row ['OrderedTaker'],
-						'ooUser' => $row ['UserNameOrdered'] 
-				);
-			}
-			$stmt->closeCursor ();
-			
-			// Get the tracking info for edits
-			$sql = "uspWebXFInvoiceTrackingEdits " . $invNum;
-			$stmt = $dbh->query ( $sql );
-			foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
-				$trackInvoiceEdits [] = array (
-						'modifiedBy' => $row ['ModifiedBy'],
-						'timeStamp' => $row ['TimeModified'] 
-				);
-			}
-			$stmt->closeCursor ();
-			
-			$dbh = null;
-		} catch ( PDOException $e ) {
-			$errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $e->getMessage ();
-			SP_ErrorLogging ( $errorTxt, true, DART_ERROR_LOG );
-			exit ();
 		}
 		
 		if ($useCOG)
@@ -947,10 +983,12 @@ if ($r365FTP) {
 	if ($adhoc)
 		echo "Sending via FTP to R365...\n";
 	if (count ( $r365Data ) > 0) {
+		$r365InvoiceList = array ();
 		$invR365 = new InvoiceR365 ( $r365Data [0] );
 		foreach ( $locInfo as $loc ) {
 			// Retrieve and add to CSV each invoice
 			$invR365->retrieveInvoice ( $loc ['saleID'] );
+			$r365InvoiceList [] = $loc ['saleID'];
 			$invR365->generateCSVLineItems ();
 			$invR365->detail = array ();
 		}
@@ -959,8 +997,10 @@ if ($r365FTP) {
 		} catch ( SP_Exception $spe ) {
 			$errMsg = "R365 : FTP CSV error : " . $spe->getMessage ();
 			SP_errorLogging ( $errMsg, true, '', $currentScript . " - R365 error" );
+			dartLogging ( $currentScript, "    R365 FTP Failed : " . implode ( ',', $r365InvoiceList ) );
 			continue;
 		}
+		dartLogging ( $currentScript, "    R365 FTP Sent : " . implode ( ',', $r365InvoiceList ) );
 	}
 } else {
 	if ($adhoc)
@@ -1112,5 +1152,6 @@ if ($adhoc) {
 	echo "</pre>\n";
 }
 // }
+// error_log("$currentScript : sent : " . html_entity_decode($invXML) . " : " . print_r($argv, true));
 exit ( 0 );
 ?>

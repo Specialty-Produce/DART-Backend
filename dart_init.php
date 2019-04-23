@@ -1,8 +1,12 @@
 <?php
+// Maintenace Mode
+define ( "MAINTENANCE_MODE", false );
+
 // Hard-coded UserIDs
 define ( "DEBUG_USERID", 12658 );
 define ( "PRINTED_INVOICE_ID", 13358 );
 define ( "DARK_STOP_ID", 17862 );
+define ( "DELIVERY_NO_SIGNATURE_ID", 96107 );
 
 // Logging
 define ( "DART_ERROR_LOG", "dart_errors" );

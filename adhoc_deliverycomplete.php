@@ -60,7 +60,11 @@ if ($jd== FALSE || is_null ( $jd)) {
     exit ();
 }
 
+$notSaleID = $jd->deliveryjson->invoice_list [0]->saleid;
+echo "\$notSaleID = $notSaleID";
+
 echo "<pre>" . print_r($jd, true) . "</pre>";
+exit();
 // Pull these out for easier reference
 $locationID = $jd->deliveryjson->delivery->locationid;
 $signerID = $jd->deliveryjson->delivery->signerid;

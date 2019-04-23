@@ -63,24 +63,27 @@ if ($version == FALSE || is_null ( $version )) {
 	$version = 'none';
 }
 
+if ($username == 'terry' || $username == 'roger')
+	error_log ( "$currentScript : $username : $token" );
+
 try {
 	$dbh = new PDO ( 'spdb', '', '' );
 	// set the error reporting attribute.
 	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-
+	
 	$sql = "uspDARTLogin '$username', '$password', '$udid', '$version', '$deviceName', '$token'";
 	$stmt = $dbh->query ( $sql );
 	$result = $stmt->fetch ( PDO::FETCH_ASSOC );
 	// Returns -1 on invalid username or password
 	$userID = $result ['iUserID'];
 	$stmt->closeCursor ();
-
+	
 	if ($userID == - 1) {
 		$badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid login', $badXML );
 		echo $badXML;
 		exit ();
 	}
-
+	
 	$dbh = null;
 } catch ( PDOException $e ) {
 	$errMsg = $e->getFile () . ' (' . $e->getLine () . ')' . $e->getMessage () . " : username / password = " . $username . "/" . $password;

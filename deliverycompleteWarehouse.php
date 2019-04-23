@@ -164,7 +164,7 @@ while ( $sqlFailed ) {
 }
 
 if ($resultDelivered === false) {
-	$errMsg = "uspDARTDelivered $updateCode, $signerID, $invXML returned FALSE";
+	$errMsg = "$currentScript : uspDARTDelivered $updateCode, $signerID, $invXML returned FALSE";
 	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 	dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
 	$returnVals ['result'] = false;

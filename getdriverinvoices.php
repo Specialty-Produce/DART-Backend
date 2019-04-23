@@ -15,7 +15,6 @@ $codeStr = generateRandomCode ( 6 );
 
 // User ID
 $userid = filter_input ( INPUT_POST, 'userid', FILTER_SANITIZE_NUMBER_INT );
-$userid = DEBUG_USERID;
 if ($userid == FALSE || is_null ( $userid )) {
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid User ID', $badXML );
 	echo $badXML;
@@ -66,7 +65,7 @@ try {
 $invoiceList = array ();
 foreach ( $routeInfo as $entry ) {
 	$lastUpdate = preg_replace ( '/(.*)\.\d{3}$/', '$1', $entry ['dtDartLastUpdated'] );
-	$packerLocation = (is_null ( $entry ['sPackerLocation'] )) ? '' : mb_convert_encoding ( $entry ['sPackerLocation'], "UTF-8", "Windows-1252" );
+	$packerLocation = (is_null($entry ['sPackerLocation'])) ? '' : mb_convert_encoding ( $entry ['sPackerLocation'], "UTF-8", "Windows-1252" );
 	$invoiceList [$entry ['iSaleID']] = array (
 			'saleID' => $entry ['iSaleID'],
 			'locID' => $entry ['iLocationDestinationID'],
@@ -75,7 +74,7 @@ foreach ( $routeInfo as $entry ) {
 			'notes' => DART_escapeXmlString ( mb_convert_encoding ( $entry ['txtInvoiceNotes'], "UTF-8", "Windows-1252" ) ),
 			'po' => mb_convert_encoding ( $entry ['sPO'], "UTF-8", "Windows-1252" ),
 			'terms' => mb_convert_encoding ( $entry ['sTerms'], "UTF-8", "Windows-1252" ),
-			'packerlocation' => $packerLocation 
+			'packerlocation' => $packerLocation
 	);
 	$invoiceList [$entry ['iSaleID']] ['items'] = array ();
 }
@@ -86,23 +85,11 @@ foreach ( $invInfo as $item ) {
 	// Add the line pricing info
 	if (! isset ( $priceList [$item ['iSaleDetailID']] ))
 		$priceList [$item ['iSaleDetailID']] = array ();
-	$priceList [$item ['iSaleDetailID']] [$item ['iUnitID']] = array (
-			'desc' => mb_convert_encoding ( $item ['UnitDescription'], "UTF-8", "Windows-1252" ),
-			'cost' => $item ['mUnitPrice'] 
-	);
-	// Only add to the invoice the actual unitID set items
-	if ($item ['iInvoiceDefault'] == 1)
-		$invoiceList [$item ['iSaleID']] ['items'] [] = array (
-				'lineid' => $item ['iSaleDetailID'],
-				'prodid' => $item ['iProductID'],
-				'proddesc' => mb_convert_encoding ( $item ['sDescription'], "UTF-8", "Windows-1252" ),
-				'unitid' => $item ['iUnitID'],
-				'qorder' => $item ['fOrderQuantity'],
-				'qship' => $item ['fShipQuantity'],
-				'status' => $item ['iShort'],
-				'itemspec' => DART_escapeXmlString ( mb_convert_encoding ( $item ['sItemNotes'], "UTF-8", "Windows-1252" ) ),
-				'greendiscount' => sprintf ( "%0.4f", ($item ['fDiscountOnline'] + $item ['fDiscountOnTime']) ) 
-		);
+		$priceList [$item ['iSaleDetailID']] [$item ['iUnitID']] = array ('desc' => mb_convert_encoding ( $item ['UnitDescription'], "UTF-8", "Windows-1252" ), 'cost' => $item ['mUnitPrice']);
+		// Only add to the invoice the actual unitID set items
+		if ($item ['iInvoiceDefault'] == 1)
+			$invoiceList [$item ['iSaleID']] ['items'] [] = array ('lineid' => $item ['iSaleDetailID'], 'prodid' => $item ['iProductID'], 'proddesc' => mb_convert_encoding ( $item ['sDescription'], "UTF-8", "Windows-1252" ), 'unitid' => $item ['iUnitID'], 'qorder' => $item ['fOrderQuantity'],
+					'qship' => $item ['fShipQuantity'], 'status' => $item ['iShort'], 'itemspec' => DART_escapeXmlString ( mb_convert_encoding ( $item ['sItemNotes'], "UTF-8", "Windows-1252" ) ));
 }
 /*
  * echo "<pre>\n"; echo "ROUTEINFO\n"; print_r($routeInfo); echo "\n-----------------------------------------------------------------\n"; echo "INVINFO\n"; print_r($invInfo); echo "\n-----------------------------------------------------------------\n"; echo "PRICELIST\n"; print_r($priceList); echo "\n-----------------------------------------------------------------\n"; echo "INVOICELIST\n"; print_r($invoiceList); echo "</pre>\n";

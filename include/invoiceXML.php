@@ -17,7 +17,7 @@ foreach ( $invoiceList as $inv ) {
 	$resultStr .= "<invoice_item_list>\n";
 	$sortCount = 1;
 	foreach ( $inv ['items'] as $item ) {
-		$resultStr .= '<item lineid="' . $item ['lineid'] . '" sort="' . $sortCount . '" editable="' . "true" . '">' . "\n";
+		$resultStr .= '<item lineid="' . $item ['lineid'] . '" sort="' . $sortCount . '">' . "\n";
 		$sortCount ++;
 		$resultStr .= "<prodid>" . $item ['prodid'] . "</prodid>\n";
 		$resultStr .= "<proddesc>" . $item ['proddesc'] . "</proddesc>\n";
@@ -26,7 +26,6 @@ foreach ( $invoiceList as $inv ) {
 		$resultStr .= "<qship>" . sprintf ( '%0.2f', $item ['qship'] ) . "</qship>\n";
 		$resultStr .= "<status>" . $item ['status'] . "</status>\n";
 		$resultStr .= "<itemspec>" . $item ['itemspec'] . "</itemspec>\n";
-		$resultStr .= "<greendiscount>" . $item ['greendiscount'] . "</greendiscount>\n";
 		$resultStr .= "<pricing_unit_list>\n";
 		foreach ( $priceList [$item ['lineid']] as $unitID => $entry ) {
 			$resultStr .= '<unit id="' . $unitID . '">' . "\n";

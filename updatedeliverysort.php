@@ -113,6 +113,7 @@ while ( $sqlFailed ) {
 
 echo $successXML;
 
-DART::click ( 3, $dartSession, 0, $userid, 0, '', '', '', '', '', 0 );
+if (isset ( $jd->optimizedroute ) && $jd->optimizedroute)
+	DART::click ( 3, $dartSession, 0, $userid, 0, 'o', '', '', '', '', 0 );
 exit ();
 ?>

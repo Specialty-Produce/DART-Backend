@@ -89,9 +89,13 @@ try {
 	$stmt->bindParam ( ':acc', $acc );
 	
 	foreach ( $gpsInfo as $entry ) {
+		
+		if (! isset ( $entry->timestamp )) {
+			dartLogging ( $currentScript, " : timestamp NOT SET : " . $gpsJSON );
+			dartLogging ( "errorreport.php", " : timestamp NOT SET : " . $gpsJSON );
+			continue;
+		}
 		$coordDateTime = date ( 'Y-m-d H:i:s', strtotime ( $entry->timestamp ) ) . '.000';
-		if (! isset ( $entry->timestamp ))
-			error_log ( $currentScript . " : timestamp NOT SET : " . $gpsJSON );
 		$lat = $entry->lat;
 		$lon = $entry->lon;
 		$acc = (isset ( $entry->acc )) ? $entry->acc : - 1.0;

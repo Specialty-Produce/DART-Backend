@@ -89,8 +89,9 @@ while ( $sqlFailed ) {
 		$errMsg .= $e->getFile () . ' (' . $e->getLine () . ')' . " sqlAttemptCount=$sqlAttemptCount : " . $eMessage;
 		$errMsg .= "\n\ninvXML = " . $invXML;
 		$errMsg .= "\n\n\$codeStr = $codeStr";
+		$errMsg .= "\n\n\$sqlAttemptCount = $sqlAttemptCount";
 		SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
-		if (preg_match ( '/Timeout expired/', $eMessage ) || preg_match ( '/SQL Server does not exist or access denied/', $eMessage ) || preg_match ( '/deadlock victim/', $eMessage )) {
+		if (preg_match ( '/Timeout expired/', $eMessage ) || preg_match ( '/SQL Server does not exist or access denied/', $eMessage ) || preg_match ( '/deadlock victim/', $eMessage ) || preg_match ( '/Schema changed/', $eMessage )) {
 			if ($sqlAttemptCount < DART_SQL_TIMEOUT_MAX_TRIES) {
 				$sqlAttemptCount ++;
 				$sqlFailed = true;

@@ -1,19 +1,22 @@
 <?php
 include_once 'global_CDC.php';
+include_once 'classes_SP/class_LocationSP.php';
+include_once 'classes_SP/class_SP_Exception.php';
+require_once 'PHPMailer5.2/PHPMailerAutoload.php';
 include 'dart_init.php';
 $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 
 // On various errors and failures, we'll use the status BAD update XML
 $badXML = <<< EOT
 <?xml version="1.0"?>
-<deliverycomplete status="failed" code="0" retry="true" errmsg="XXX">
-</deliverycomplete>
+<deliverednosignature status="failed" code="0" retry="true" errmsg="XXX">
+</deliverednosignature>
 EOT;
 
 $successXML = <<< EOT
 <?xml version="1.0"?>
-<deliverycomplete status="success">
-</deliverycomplete>
+<deliverednosignature status="success">
+</deliverednosignature>
 EOT;
 
 // Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
@@ -30,10 +33,6 @@ if (isset ( $_POST ['jsondata'] )) {
 	// dartLogging ( $currentScript, "POST=" . print_r($_POST, true), $codeStr );
 } else {
 	$appJSON = false;
-}
-
-if (isset ( $_POST ['debuginfo'] )) {
-	dartLogging ( $currentScript, "debuginfo=" . $_POST ['debuginfo'], $codeStr );
 }
 
 if (MAINTENANCE_MODE) {
@@ -98,95 +97,23 @@ if ($jd->userid == DEBUG_USERID) {
 // Pull these out for easier reference
 $locationID = $jd->deliveryjson->delivery->locationid;
 $signerID = $jd->deliveryjson->delivery->signerid;
-if ($signerID < 0) {
-	$isDarkDrop = true;
-	$signerID = DARK_STOP_ID;
-} else {
-	$isDarkDrop = false;
+if ($signerID != DELIVERY_NO_SIGNATURE_ID) {
+	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid NO SIGNATURE signer ID supplied', $badXML );
+	echo $badXML;
+	SP_ErrorLogging ( "Invalid No Signature signer ID for codeStr = $codeStr.", true, DART_ERROR_LOG, "DART - $currentScript - Invalid No Signature ID" );
+	exit ();
 }
-
-// Ignore printed invoice signers
-if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
-	// SIGNATURE IMAGE
-	$filedir = DART_SIG_DIR . $jd->deliveryjson->delivery->locationid;
-	if (! is_dir ( $filedir )) {
-		if (! mkdir ( $filedir )) {
-			$errMsg = "Could not create folder for locationID = " . $jd->deliveryjson->delivery->locationid;
-			dartLogging ( $currentScript, "    Could not create folder for locationID = " . $jd->deliveryjson->delivery->locationid, $codeStr );
-			SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
-			$badXML = preg_replace ( '/XXX/', $currentScript . ' : Could not create folder for locationID = ' . $jd->deliveryjson->delivery->locationid, $badXML );
-			echo $badXML;
-			exit ();
-		}
-	}
-	// Convert the image to 24-bit and save
-	foreach ( $jd->deliveryjson->invoice_list as $invoice ) {
-		$file = $filedir . '/' . $invoice->saleid . ".png";
-		
-		// Create from the encoded string
-		if (! $imgSrc = imagecreatefromstring ( base64_decode ( $invoice->signatureimage ) )) {
-			$errMsg = "Could not create image from signatureimage data, saleID = " . $invoice->saleid . ", code = " . $codeStr;
-			SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
-			dartLogging ( $currentScript, "    Could not create image from signatureimage data", $codeStr );
-			$badXML = preg_replace ( '/XXX/', $currentScript . ' : Could not create image from signatureimage data', $badXML );
-			
-			// Capture and clear repeating call **********
-			if ($invoice->saleid == 3415845) {
-				$badXML = $successXML;
-				$errMsg = "Captured bad image saleID and sent success, saleID = " . $invoice->saleid . ", code = " . $codeStr;
-				SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
-				dartLogging ( $currentScript, "    Captured bad image saleID and sent success", $codeStr );
-				continue;
-			}
-			echo $badXML;
-			exit ();
-		}
-		$width = imagesx ( $imgSrc );
-		$height = imagesy ( $imgSrc );
-		
-		// Make the new image
-		if (! $imgDest = imagecreatetruecolor ( $width, $height )) {
-			dartLogging ( $currentScript, "    Could not create new true color image", $codeStr );
-			$badXML = preg_replace ( '/XXX/', $currentScript . ' : Could not create new true color image', $badXML );
-			echo $badXML;
-			exit ();
-		}
-		
-		// Copy sent into new
-		if (! imagecopy ( $imgDest, $imgSrc, 0, 0, 0, 0, $width, $height )) {
-			dartLogging ( $currentScript, "    Could not copy source image to new image", $codeStr );
-			$badXML = preg_replace ( '/XXX/', $currentScript . ' : Could not copy source image to new image', $badXML );
-			echo $badXML;
-			exit ();
-		}
-		
-		// Write it out
-		if (! imagepng ( $imgDest, $file )) {
-			dartLogging ( $currentScript, "    Could not save png image", $codeStr );
-			$badXML = preg_replace ( '/XXX/', $currentScript . ' : Could not save png image', $badXML );
-			echo $badXML;
-			exit ();
-		}
-	}
-}
-
-// DEBUG sql timeout
-/*
- * if (rand ( 1, 2 ) == 1) { sleep ( DART_SQL_TIMEOUT_MAX_TRIES * DART_SQL_TIMEOUT_SLEEP ); $badXML = preg_replace ( '/XXX/', $currentScript . ' : Database timeout, see ' . DART_ERROR_LOG . ' log', $badXML ); $badXML = preg_replace ( '/code="0"/', 'code="' . DART_ERR_SQL_DB_TIMEOUT . '"', $badXML ); echo $badXML; exit (); }
- */
-
-// Quick fix
-/*
- * if ($jd->deliveryjson->delivery->signerinfo->lname == 'CaÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â±ez') $jd->deliveryjson->delivery->signerinfo->lname = 'C';
- */
 
 // Get the invoices marked as "delivered", which is code 2 for this stored procedure
-$updateCode = 2;
+$updateCode = 4;
 $invXML = '';
 $result = false;
 $sqlFailed = true;
 $sqlAttemptCount = 1;
 $sql = '';
+$notifyUserID = 0;
+$notifyEmail = '';
+$notifyLocation = '';
 while ( $sqlFailed ) {
 	$sqlFailed = false;
 	try {
@@ -195,8 +122,9 @@ while ( $sqlFailed ) {
 		
 		// Prep for the XML version of invoice list for the stored procedure
 		$invXML = "<ROOT>\n";
-		foreach ( $jd->deliveryjson->invoice_list as $invoice )
-			$invXML .= '<Rec rID="' . $invoice->saleid . '" dtDelTime="' . $invoice->signtimestamp . '"/>' . "\n";
+		foreach ( $jd->deliveryjson->invoice_list as $invoice ) {
+			$invXML .= '<Rec rID="' . $invoice->saleid . '" dtDelTime="' . date ( 'Y-m-d G:i' ) . '"/>' . "\n";
+		}
 		$invXML .= "</ROOT>";
 		
 		// Check if this is a repeat call to deliverycomplete.php
@@ -216,48 +144,6 @@ while ( $sqlFailed ) {
 			exit ();
 		}
 		
-		// Process any signer deletions
-		foreach ( $jd->deliveryjson->delivery->signerdeletion as $deletionEntry ) {
-			$sql = "uspDARTAddSigner " . $deletionEntry->signerid . ", $locationID, '', '', '', 4, ''";
-			$stmt = $dbh->query ( $sql );
-			$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-			$deletedID = $result ['iUserID'];
-			dartLogging ( $currentScript, "    uspDARTAddSigner iUserID=" . $deletedID . " DELETED", $codeStr );
-			$stmt->closeCursor ();
-		}
-		
-		// First check to see if there is a signer
-		if ($signerID == 0) {
-			// Add the signer
-			$sql = "uspDARTAddSigner 0, $locationID, '" . substr ( preg_replace ( '/\'+/', '\'\'', trim ( $jd->deliveryjson->delivery->signerinfo->fname ) ), 0, 75 ) . "', ";
-			$sql .= "'" . substr ( preg_replace ( '/\'+/', '\'\'', trim ( $jd->deliveryjson->delivery->signerinfo->lname ) ), 0, 75 ) . "', ";
-			$sigEmail = trim ( $jd->deliveryjson->delivery->signerinfo->email );
-			$sql .= ($sigEmail == '') ? "''" : "'" . $sigEmail . "'";
-			$sql .= ", 1, ";
-			$sigPhone = formatPhone ( trim ( $jd->deliveryjson->delivery->signerinfo->phone ) );
-			$sql .= ($sigPhone == '') ? "''" : "'" . $sigPhone . "'";
-			dartLogging ( $currentScript, "    uspDARTAddSigner sql=" . $sql, $codeStr );
-			$stmt = $dbh->query ( $sql );
-			$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-			$signerID = $result ['iUserID'];
-			dartLogging ( $currentScript, "    uspDARTAddSigner iUserID=" . $signerID, $codeStr );
-			$stmt->closeCursor ();
-		} elseif ($signerID > 0 && strlen ( trim ( $jd->deliveryjson->delivery->signerinfo->fname ) ) > 1) {
-			// Update the signer
-			$sql = "uspDARTAddSigner $signerID, $locationID, '" . substr ( preg_replace ( '/\'+/', '\'\'', trim ( $jd->deliveryjson->delivery->signerinfo->fname ) ), 0, 75 ) . "', ";
-			$sql .= "'" . substr ( preg_replace ( '/\'+/', '\'\'', trim ( $jd->deliveryjson->delivery->signerinfo->lname ) ), 0, 75 ) . "', ";
-			$sigEmail = trim ( $jd->deliveryjson->delivery->signerinfo->email );
-			$sql .= ($sigEmail == '') ? "''" : "'" . $sigEmail . "'";
-			$sql .= ", 3, ";
-			$sigPhone = formatPhone ( trim ( $jd->deliveryjson->delivery->signerinfo->phone ) );
-			$sql .= ($sigPhone == '') ? "''" : "'" . $sigPhone . "'";
-			dartLogging ( $currentScript, "    uspDARTAddSigner sql=" . $sql, $codeStr );
-			$stmt = $dbh->query ( $sql );
-			$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-			$signerID = $result ['iUserID'];
-			$stmt->closeCursor ();
-		}
-		
 		// Get the last update time according to the database
 		$invTimesDB = array ();
 		$sql = "uspDARTCheckLastUpdate '" . $invXML . "'";
@@ -271,6 +157,21 @@ while ( $sqlFailed ) {
 		// Now mark the invoice as "delivered"
 		$sql = "uspDARTDelivered $updateCode, $signerID, '" . $invXML . "'";
 		$resultDelivered = $dbh->exec ( $sql );
+		
+		// Get the notification information
+		$notSaleID = $jd->deliveryjson->invoice_list [0]->saleid;
+		$sql = "select dbo.fnLocationDefaultEmail($locationID) as sEmail, dbo.fnLocationDefaultUserID($locationID) as iUserID, dbo.fnLocationDescriptionBySaleID($notSaleID) as sLocDesc";
+		$stmt = $dbh->query ( $sql );
+		$notResult = $stmt->fetch ( PDO::FETCH_ASSOC );
+		$notifyUserID = $notResult ['iUserID'];
+		$notifyEmail = $notResult ['sEmail'];
+		$notifyLocation = $notResult ['sLocDesc'];
+		$stmt->closeCursor ();
+		
+		// Add to Missing table
+		foreach ( $jd->deliveryjson->invoice_list as $invoice ) {
+			$addMissingResult = LocationSP::createWebSignInfo ( $invoice->saleid, 1, $notifyUserID );
+		}
 		
 		// We need to build the list of invoices that have lastupdatetime values different between database and ipad
 		$updateAtDeliveryFailXML = '';
@@ -333,7 +234,7 @@ while ( $sqlFailed ) {
 }
 
 if ($resultDelivered === false) {
-	$errMsg = "$currentScript : uspDARTDelivered $updateCode, $signerID, $invXML returned FALSE : $codeStr";
+	$errMsg = "uspDARTDelivered $updateCode, $signerID, $invXML returned FALSE : $codeStr";
 	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 	dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
@@ -357,6 +258,47 @@ if ($resultDeliveryFail === false) {
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
 	echo $badXML;
 	exit ();
+}
+
+// Instantiate the mail stuff
+$mail = new PHPMailer ();
+$mail->IsSMTP ();
+$mail->SMTPAuth = false;
+$mail->SMTPOptions = array (
+		'ssl' => array (
+				'verify_peer' => false,
+				'verify_peer_name' => false,
+				'allow_self_signed' => true 
+		) 
+);
+$mail->Host = SPConsts::PHPMailerHostIP;
+$mail->Helo = "vWeb-PHP";
+$mail->CharSet = 'UTF-8';
+$mail->isHTML ( true );
+$mail->FromName = "Specialty Produce Accounting";
+$mail->From = "missingsig@specialtyproduce.com";
+$mail->AddReplyTo ( "missingsig@specialtyproduce.com", "Specialty Produce Accounting" );
+$mail->Subject = "Specialty Produce missing signature - $notifyLocation";
+// Send the email alerting to no signature
+if (strlen ( $notifyEmail ) == 0) {
+	$notifyEmail = "missingsig@specialtyproduce.com";
+	$mail->Subject = "Missing Signature - No Sales Email Set - $notifyLocation";
+}
+$mail->addAddress ( $notifyEmail );
+$mail->addBCC("christopher@specialtyproduce.com");
+$sigLinks = '';
+foreach ( $jd->deliveryjson->invoice_list as $invoice ) {
+	$link = 'https://dart.specialtyproduce.com/websign/index.php?sid=' . urlencode ( simple_encrypt ( $invoice->saleid ) );
+	$sigLinks .= $invoice->saleid . ' : <a href="' . $link . '" target="_blank">' . $link . "</a><br/>";
+}
+$mail->Body = "Dear Sir or Madam,
+<p>The following invoice(s) for <b>$notifyLocation</b> have already been delivered but for whatever reason no signature was gathered at the time, or they need to be re-signed.</p>
+Please click on the link(s) to load a web page wherein you can sign with mouse or finger.<br/><br/>";
+$mail->Body .= $sigLinks;
+$mail->Body .= '<p>Thank you for your prompt attention to this.</p>Best,<br/>Specialty Produce Accounting<br/>missingsig@specialtyproduce.com';
+if (! $mail->Send ()) {
+	$errMsg = "Error sending email!!!\nTo : $notifyEmail" . "\nError : " . $mail->ErrorInfo . "\n\nBody:\n" . $mail->Body;
+	SP_errorLogging ( $errMsg, true, DART_ERROR_LOG );
 }
 
 // Submit any new invoices
@@ -498,18 +440,6 @@ if (count ( $jd->new_invoice_ship_tomorrow_list ) > 0) {
 		$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
 		echo $badXML;
 		exit ();
-	}
-}
-
-// Call sendinvoices.php with the invoice list to generate the PDFs and send them out for non-PRINTED INVOICE
-if ($signerID != PRINTED_INVOICE_ID) {
-	$invoiceStr = '';
-	foreach ( $jd->deliveryjson->invoice_list as $invoice )
-		$invoiceStr .= " " . $invoice->saleid;
-	if (phpversion () == "5.6.20") {
-		pclose ( popen ( "start /B C:\PROGRA~2\PHP\V56~1.20\php.exe sendinvoice.php$invoiceStr", "r" ) );
-	} else {
-		pclose ( popen ( "start /B php sendinvoice.php$invoiceStr", "r" ) );
 	}
 }
 

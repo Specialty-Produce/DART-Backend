@@ -47,18 +47,6 @@ try {
 	$stmt = $dbh->query ( $sql );
 	$vehicleList = $stmt->fetchAll ( PDO::FETCH_BOTH );
 	$stmt->closeCursor ();
-	
-	$sql = "select top 1 dtCreated, siPad from tblDartVersion where siPad is not null order by dtDate desc";
-	$stmt = $dbh->query ( $sql );
-	$versioniPad = $stmt->fetch ( PDO::FETCH_BOTH );
-	$stmt->closeCursor ();
-	
-	$sql = "select top 1 dtCreated, siPhone from tblDartVersion where siPhone is not null order by dtCreated desc";
-	$stmt = $dbh->query ( $sql );
-	$versioniPhone = $stmt->fetch ( PDO::FETCH_BOTH );
-	$stmt->closeCursor ();
-
-	// TODO : Get message addresses
 
 	$dbh = null;
 } catch ( PDOException $e ) {
