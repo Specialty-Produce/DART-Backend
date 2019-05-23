@@ -10,12 +10,11 @@ require_once 'classes_SP/class_InvoiceHula.php';
 require_once 'classes_SP/class_InvoiceProfitProPlus.php';
 require_once 'EDI_SP.php';
 require_once 'classes_SP/class_SP_FTP.php';
-require_once 'PHPMailer5.2/PHPMailerAutoload.php';
+require 'classes_SP/class_PHPMailerSP.php';
 
 /* XXX */
-exit();
-
-function sortLineItems ($a, $b) {
+exit ();
+function sortLineItems($a, $b) {
 	global $useCOG;
 	if ($useCOG) {
 		$cmpCOG = strnatcmp ( $a ['cogAccount'], $b ['cogAccount'] );
@@ -53,7 +52,10 @@ if ($adhoc) {
 	// $argv = array('adhoc_sendinvoice.php', 2047355, 2047430, 2047550, 2047868, 2048719, 2048824, 2048999, 2049593, 2050683, 2050957, 2051078);
 	/* XXX */
 	$resendSaleID = 3154498;
-	$argv = array ('adhoc_sendinvoice.php', $resendSaleID);
+	$argv = array (
+			'adhoc_sendinvoice.php',
+			$resendSaleID 
+	);
 	echo "<pre>\n";
 	echo "Starting...\n\n";
 	echo "count = " . count ( $argv ) . "\n";
@@ -109,42 +111,79 @@ try {
 			}
 		}
 		$showProdID = ($row ['iShowProductID'] == - 1) ? true : false;
-		$locInfo [$row ['iSaleID']] = array ('id' => $row ['iLocationDestinationID'], 'saleID' => $row ['iSaleID'], 'name' => $row ['sDescription'], 'address' => $row ['sAddress1'], 'city' => $row ['sCity'], 'state' => $row ['sState'], 'zip' => $row ['sPostalCode'], 'phone' => $row ['sPhone'], 
-				'salesperson' => $row ['txtSalesPerson'], 'salesphone' => $row ['txtCellPhone'], 'salesemail' => $row ['txtSalesEmail'], 'terms' => $row ['sTerms'], 'po' => $POnumber, 'darkstop' => $isDarkStop, 'signer' => $row ['txtSigner'], 'shipdate' => $shipDate, 'deldate' => $deliveryDate, 
-				'greenYTD' => $row ['mYTD'], 'ediID' => $ediID, 'showProdID' => $showProdID);
+		$locInfo [$row ['iSaleID']] = array (
+				'id' => $row ['iLocationDestinationID'],
+				'saleID' => $row ['iSaleID'],
+				'name' => $row ['sDescription'],
+				'address' => $row ['sAddress1'],
+				'city' => $row ['sCity'],
+				'state' => $row ['sState'],
+				'zip' => $row ['sPostalCode'],
+				'phone' => $row ['sPhone'],
+				'salesperson' => $row ['txtSalesPerson'],
+				'salesphone' => $row ['txtCellPhone'],
+				'salesemail' => $row ['txtSalesEmail'],
+				'terms' => $row ['sTerms'],
+				'po' => $POnumber,
+				'darkstop' => $isDarkStop,
+				'signer' => $row ['txtSigner'],
+				'shipdate' => $shipDate,
+				'deldate' => $deliveryDate,
+				'greenYTD' => $row ['mYTD'],
+				'ediID' => $ediID,
+				'showProdID' => $showProdID 
+		);
 	}
 	$stmt->closeCursor ();
 	
 	// Get the emails
 	$stmt = $dbh->query ( "SELECT sEmail, sDescription FROM tblDartInvoiceSendEmails WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
 	foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row )
-		$sendEmails [] = array ('name' => $row ['sDescription'], 'email' => $row ['sEmail']);
+		$sendEmails [] = array (
+				'name' => $row ['sDescription'],
+				'email' => $row ['sEmail'] 
+		);
 	$stmt->closeCursor ();
 	if ($adhoc) {
 		if ($debug) {
 			$sendEmails = array ();
 			if ($pdfMail)
-				$sendEmails [] = array ('name' => $debugName, 'email' => $debugMail);
+				$sendEmails [] = array (
+						'name' => $debugName,
+						'email' => $debugMail 
+				);
 		}
 	} else {
 		if ($debug)
-			$sendEmails [] = array ('name' => $debugName, 'email' => $debugMail);
+			$sendEmails [] = array (
+					'name' => $debugName,
+					'email' => $debugMail 
+			);
 	}
 	
 	// Get the faxes
 	$stmt = $dbh->query ( "SELECT sFax, sDescription FROM tblDartInvoiceSendFaxes WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
 	foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row )
-		$sendFaxes [] = array ('name' => $row ['sDescription'], 'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $row ['sFax'] ));
+		$sendFaxes [] = array (
+				'name' => $row ['sDescription'],
+				'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $row ['sFax'] ) 
+		);
 	$stmt->closeCursor ();
 	if ($adhoc) {
 		if ($debug) {
 			$sendFaxes = array ();
 			if ($pdfFax)
-				$sendFaxes [] = array ('name' => $debugName, 'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $debugFax ));
+				$sendFaxes [] = array (
+						'name' => $debugName,
+						'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $debugFax ) 
+				);
 		}
 	} else {
 		if ($debug && strlen ( $debugFax ) == 10)
-			$sendFaxes [] = array ('name' => $debugName, 'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $debugFax ));
+			$sendFaxes [] = array (
+					'name' => $debugName,
+					'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $debugFax ) 
+			);
 	}
 	
 	// RSI ID
@@ -178,7 +217,10 @@ try {
 		if ($debug) {
 			$pppEmails = array ();
 			if ($pppMail)
-				$pppEmails [] = array ('name' => $debugName, 'email' => $debugMail);
+				$pppEmails [] = array (
+						'name' => $debugName,
+						'email' => $debugMail 
+				);
 		}
 	}
 	
@@ -200,9 +242,12 @@ try {
 
 /* XXX */
 if ($useCOG && count ( $sendEmails ) > 0)
-	$sendEmails [] = array ('name' => $debugName, 'email' => $debugMail);
-	
-	// Work through each invoice and save the PDF
+	$sendEmails [] = array (
+			'name' => $debugName,
+			'email' => $debugMail 
+	);
+
+// Work through each invoice and save the PDF
 if ($pdfMail || $pdfFax) {
 	for($i = 1; $i < count ( $argv ); $i ++) {
 		$invNum = $argv [$i];
@@ -229,10 +274,27 @@ if ($pdfMail || $pdfFax) {
 					$cogAccount = '';
 				}
 				if ($row ['iProductID'] == 9997)
-					$lineItems [] = array ('description' => 'Green Discount ...', 'ordered' => 1, 'shipped' => 1, 'unitPrice' => sprintf ( "%0.2f", $itemTotal ), 'itemTotal' => $itemTotal, 'status' => '', 'prodID' => 9997, 'cogAccount' => $cogAccount);
+					$lineItems [] = array (
+							'description' => 'Green Discount ...',
+							'ordered' => 1,
+							'shipped' => 1,
+							'unitPrice' => sprintf ( "%0.2f", $itemTotal ),
+							'itemTotal' => $itemTotal,
+							'status' => '',
+							'prodID' => 9997,
+							'cogAccount' => $cogAccount 
+					);
 				else
-					$lineItems [] = array ('description' => $row ['Description'], 'ordered' => round ( $row ['fOrderQuantity'], 2 ), 'shipped' => round ( $row ['fShipQuantity'], 2 ), 'unitPrice' => sprintf ( "%0.2f", $row ['mUnitPrice'] ), 'itemTotal' => $itemTotal, 'status' => $row ['Status'], 
-							'prodID' => $row ['iProductID'], 'cogAccount' => $cogAccount);
+					$lineItems [] = array (
+							'description' => $row ['Description'],
+							'ordered' => round ( $row ['fOrderQuantity'], 2 ),
+							'shipped' => round ( $row ['fShipQuantity'], 2 ),
+							'unitPrice' => sprintf ( "%0.2f", $row ['mUnitPrice'] ),
+							'itemTotal' => $itemTotal,
+							'status' => $row ['Status'],
+							'prodID' => $row ['iProductID'],
+							'cogAccount' => $cogAccount 
+					);
 			}
 			$stmt->closeCursor ();
 			
@@ -241,7 +303,14 @@ if ($pdfMail || $pdfFax) {
 			$stmt = $dbh->query ( $sql );
 			foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
 				$ts = preg_replace ( '/^(.*) (\d+):(\d+):\d+:\d+(.)$/', '$1 $2:$3 $4M', $row ['TimePlace'] );
-				$trackInvoiceEntry = array ('source' => $row ['OrderSource'], 'timeStamp' => date ( 'M j, Y g:i A', strtotime ( $ts ) ), 'driver' => $row ['Driver'], 'packer' => $row ['Packer'], 'orderTaker' => $row ['OrderedTaker'], 'ooUser' => $row ['UserNameOrdered']);
+				$trackInvoiceEntry = array (
+						'source' => $row ['OrderSource'],
+						'timeStamp' => date ( 'M j, Y g:i A', strtotime ( $ts ) ),
+						'driver' => $row ['Driver'],
+						'packer' => $row ['Packer'],
+						'orderTaker' => $row ['OrderedTaker'],
+						'ooUser' => $row ['UserNameOrdered'] 
+				);
 			}
 			$stmt->closeCursor ();
 			
@@ -249,7 +318,10 @@ if ($pdfMail || $pdfFax) {
 			$sql = "uspWebXFInvoiceTrackingEdits " . $invNum;
 			$stmt = $dbh->query ( $sql );
 			foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
-				$trackInvoiceEdits [] = array ('modifiedBy' => $row ['ModifiedBy'], 'timeStamp' => $row ['TimeModified']);
+				$trackInvoiceEdits [] = array (
+						'modifiedBy' => $row ['ModifiedBy'],
+						'timeStamp' => $row ['TimeModified'] 
+				);
 			}
 			$stmt->closeCursor ();
 			
@@ -306,7 +378,7 @@ if ($pdfMail || $pdfFax) {
 			}
 			if ($pdf->checkNoSpaceLeft ( 0.2 * ($numCOGLines + 2) ))
 				$pdf->markContinued ();
-				// Calc max Account length
+			// Calc max Account length
 			$pdf->SetFont ( 'Arial', 'B', 12 );
 			$maxLengthAccount = $pdf->GetStringWidth ( 'Account' );
 			$maxLengthDesc = $pdf->GetStringWidth ( 'Description' );
@@ -356,13 +428,8 @@ if ($pdfMail || $pdfFax) {
 $sendCount = 0;
 
 // Instantiate the mail stuff
-$mail = new PHPMailer ();
-$mail->IsSMTP ();
-$mail->SMTPOptions = array ('ssl' => array ('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
-$mail->Host = SPConsts::PHPMailerHostIP;
-$mail->Helo = "vDart-PHP";
-// $mail->Host = "localhost";
-$mail->SMTPAuth = false;
+$mail = new PHPMailerSP ();
+$mail->setApiKey ( 'acct' );
 
 // Send the emails
 if ($pdfMail) {
@@ -445,8 +512,8 @@ EOT;
 if ($pdfFax) {
 	if ($adhoc)
 		echo "Sending PDFs via fax...\n";
-		// Can't fax a pdf from within this program. Need to convert to tiff first.
-		// Source for the tiff conversion : http://phpdave.wordpress.com/tag/php-pdf-to-tiff/
+	// Can't fax a pdf from within this program. Need to convert to tiff first.
+	// Source for the tiff conversion : http://phpdave.wordpress.com/tag/php-pdf-to-tiff/
 	if (count ( $sendFaxes ) > 0) {
 		$invXML = "<ROOT>\n";
 		foreach ( $locInfo as $invoice ) {
@@ -520,7 +587,7 @@ if ($processEDIs) {
 					$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
 					if ($debug)
 						$mail->AddBCC ( $debugMail, $debugName );
-						// Add the PDFs
+					// Add the PDFs
 					$mail->AddAttachment ( DART_PDF_DIR . $saleID . ".pdf", "$saleID.pdf" );
 					// Add the body
 					$mail->Body = <<< EOT
@@ -611,7 +678,7 @@ EOT;
 				}
 				if ($adhoc)
 					echo "Sent $outFileName for saleID = $saleID\n";
-					// Unlink the file if we sent it, otherwise it will sit waiting to be picked up and subsequently deleted.
+				// Unlink the file if we sent it, otherwise it will sit waiting to be picked up and subsequently deleted.
 				if (constant ( 'EDISPConsts::' . $loc ['ediID'] . "_SENDFTP" )) {
 					if (! unlink ( $outFile )) {
 						$errMsg = "Error unlinking $outFile\nfor invoice # " . $loc ['saleID'];

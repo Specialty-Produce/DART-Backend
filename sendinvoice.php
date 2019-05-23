@@ -128,7 +128,7 @@ while ( $sqlFailed ) {
 				}
 			}
 			$showProdID = ($row ['iShowProductID'] == - 1) ? true : false;
-			$add2 = ($row ['sAddress2'] == null) ? '' : "\n" . trim($row ['sAddress2']);
+			$add2 = ($row ['sAddress2'] == null) ? '' : "\n" . trim ( $row ['sAddress2'] );
 			$locInfo [$row ['iSaleID']] = array (
 					'id' => $row ['iLocationDestinationID'],
 					'saleID' => $row ['iSaleID'],
@@ -329,6 +329,13 @@ $cogExceptionProduct = LocationSP::cogGetProductIDExceptions ( $locInfo [$argv [
 if ($pdfMail || $pdfFax) {
 	for($i = 1; $i < count ( $argv ); $i ++) {
 		$invNum = $argv [$i];
+		
+		// Reset the COG totals
+		if ($useCOG)
+			foreach ( $cogLocation as &$cl ) {
+				$cl ['count'] = 0;
+				$cl ['total'] = 0;
+			}
 		
 		$lineItems = array ();
 		$invTotal = 0.0;
