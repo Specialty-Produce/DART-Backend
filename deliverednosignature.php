@@ -2,7 +2,7 @@
 include_once 'global_CDC.php';
 include_once 'classes_SP/class_LocationSP.php';
 include_once 'classes_SP/class_SP_Exception.php';
-require_once 'PHPMailer5.2/PHPMailerAutoload.php';
+require_once 'classes_SP/class_PHPMailerSP.php';
 include 'dart_init.php';
 $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 
@@ -261,20 +261,8 @@ if ($resultDeliveryFail === false) {
 }
 
 // Instantiate the mail stuff
-$mail = new PHPMailer ();
-$mail->IsSMTP ();
-$mail->SMTPAuth = false;
-$mail->SMTPOptions = array (
-		'ssl' => array (
-				'verify_peer' => false,
-				'verify_peer_name' => false,
-				'allow_self_signed' => true 
-		) 
-);
-$mail->Host = SPConsts::PHPMailerHostIP;
-$mail->Helo = "vWeb-PHP";
-$mail->CharSet = 'UTF-8';
-$mail->isHTML ( true );
+$mail = new PHPMailerSP ();
+$mail->setApiKey ( 'acct' );
 $mail->FromName = "Specialty Produce Accounting";
 $mail->From = "missingsig@specialtyproduce.com";
 $mail->AddReplyTo ( "missingsig@specialtyproduce.com", "Specialty Produce Accounting" );

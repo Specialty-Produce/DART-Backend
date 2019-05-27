@@ -63,13 +63,9 @@ if ($encodedCrashLog == FALSE || is_null ( $encodedCrashLog )) {
 
 // Setup email
 // Mailer
-require_once 'PHPMailer5.2/PHPMailerAutoload.php';
-$mail = new PHPMailer ();
-$mail->IsSMTP ();
-$mail->SMTPOptions = array ('ssl' => array ('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
-$mail->Host = SPConsts::PHPMailerHostIP;
-$mail->Helo = "vDart-PHP";
-$mail->SMTPAuth = false;
+require_once 'classes_SP/class_PHPMailerSP.php';
+$mail = new PHPMailerSP ();
+$mail->setApiKey ( 'acct' );
 $mail->FromName = "Specialty Produce DART";
 $mail->From = "itadmin@specialtyproduce.com";
 $mail->AddAddress ( "terry.ace.sp2@gmail.com", "Terry Grossman" );

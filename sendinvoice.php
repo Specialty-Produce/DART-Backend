@@ -14,7 +14,7 @@ require_once 'classes_SP/class_InvoiceCheftec.php';
 require_once 'classes_SP/class_InvoicePlateIQ.php';
 require_once 'EDI_SP.php';
 require_once 'classes_SP/class_SP_FTP.php';
-require_once 'PHPMailer5.2/PHPMailerAutoload.php';
+require_once 'classes_SP/class_PHPMailerSP.php';
 function sortLineItems($a, $b) {
 	global $useCOG;
 	if ($useCOG) {
@@ -532,19 +532,8 @@ if ($pdfMail || $pdfFax) {
 $sendCount = 0;
 
 // Instantiate the mail stuff
-$mail = new PHPMailer ();
-$mail->IsSMTP ();
-$mail->SMTPOptions = array (
-		'ssl' => array (
-				'verify_peer' => false,
-				'verify_peer_name' => false,
-				'allow_self_signed' => true 
-		) 
-);
-$mail->Host = SPConsts::PHPMailerHostIP;
-$mail->Helo = "vDart-PHP";
-// $mail->Host = "localhost";
-$mail->SMTPAuth = false;
+$mail = new PHPMailerSP ();
+$mail->setApiKey ( 'acct' );
 
 // Send the emails
 if ($pdfMail) {
