@@ -12,6 +12,7 @@ require_once 'classes_SP/class_InvoiceR365.php';
 require_once 'classes_SP/class_InvoiceBevager.php';
 require_once 'classes_SP/class_InvoiceCheftec.php';
 require_once 'classes_SP/class_InvoicePlateIQ.php';
+require_once 'classes_SP/class_InvoiceSP_Simple123.php';
 require_once 'EDI_SP.php';
 require_once 'classes_SP/class_SP_FTP.php';
 require_once 'classes_SP/class_PHPMailerSP.php';
@@ -48,6 +49,7 @@ $bevagerFTP = true;
 $r365FTP = true;
 $cheftecMail = true;
 $plateIQMail = true;
+$simple123CSV = true;
 
 // $resendArray = array (3123888,3123662,3123908,3123956,3123321);
 
@@ -74,6 +76,7 @@ if ($adhoc) {
 	$pppMail = false;
 	$cheftecMail = false;
 	$plateIQMail = false;
+	$simple123CSV = false;
 }
 
 $useCOG = false;
@@ -90,6 +93,7 @@ $r365Data = array ();
 $bevagerIDs = array ();
 $cheftecEmails = array ();
 $plateIQEmail = '';
+$simple123IDs = array ();
 $pppEmails = array ();
 $sqlFailed = true;
 $sqlAttemptCount = 1;
@@ -156,7 +160,7 @@ while ( $sqlFailed ) {
 		$stmt->closeCursor ();
 		
 		// Get the emails
-		$stmt = $dbh->query ( "SELECT sEmail, sDescription FROM tblDartInvoiceSendEmails WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+		$stmt = $dbh->query ( "SELECT sEmail, sDescription FROM tblDartInvoiceSendEmails WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] . " and sEmail <> 'dontsendinvoices@specialtyproduce.com'" );
 		foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row )
 			$sendEmails [] = array (
 					'name' => $row ['sDescription'],
@@ -290,6 +294,16 @@ while ( $sqlFailed ) {
 				$plateIQEmail = '';
 				if ($plateIQMail)
 					$plateIQEmail = $debugMail;
+			}
+		}
+		
+		// Simple123
+		$stmt = $dbh->query ( "SELECT iLocationID FROM tblDARTInvoiceSendSimple123 WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+		$simple123IDs = $stmt->fetchAll ( PDO::FETCH_ASSOC );
+		$stmt->closeCursor ();
+		if ($adhoc) {
+			if ($debug) {
+				$simple123IDs = array ();
 			}
 		}
 		
@@ -1139,6 +1153,37 @@ if ($plateIQMail) {
 } else {
 	if ($adhoc)
 		echo "NOT sending via RSI...\n";
+}
+
+// Simple123
+if ($simple123CSV) {
+	if ($adhoc)
+		echo "Saving in FTP for Simple123...\n";
+	if (count ( $simple123IDs ) > 0) {
+		$s123Filename = $locInfo [$argv [1]] ['id'] . '-invoice-' . date ( 'ymd-His' ) . '.csv';
+		$s123File = DART_SIMPLE123_DIR . $s123Filename;
+		$s123FH = fopen ( $s123File, "w" );
+		$firstEntry = true;
+		foreach ( $locInfo as $loc ) {
+			try {
+				$inv = new InvoiceSP_Simple123 ();
+				if ($firstEntry) {
+					fwrite ( $s123FH, $inv->getCSVHeader () . "\n" );
+					$firstEntry = false;
+				}
+				$inv->retrieveInvoice ( $loc ['saleID'] );
+				fwrite ( $s123FH, $inv->generateInvoiceCSV () );
+			} catch ( SP_Exception $spe ) {
+				$errMsg = "Bevager : Retrieve invoice error : " . $spe->getMessage ();
+				SP_errorLogging ( $errMsg, true, '', $currentScript . " - Bevager error" );
+				continue;
+			}
+		}
+		fclose ( $s123FH );
+	}
+} else {
+	if ($adhoc)
+		echo "NOT sending via FTP to Bevager...\n";
 }
 
 // Remove the PDFs

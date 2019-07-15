@@ -263,6 +263,7 @@ if ($resultDeliveryFail === false) {
 // Instantiate the mail stuff
 $mail = new PHPMailerSP ();
 $mail->setApiKey ( 'acct' );
+$mail->isHTML(true);
 $mail->FromName = "Specialty Produce Accounting";
 $mail->From = "missingsig@specialtyproduce.com";
 $mail->AddReplyTo ( "missingsig@specialtyproduce.com", "Specialty Produce Accounting" );
