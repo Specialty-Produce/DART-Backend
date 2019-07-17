@@ -63,24 +63,27 @@ if ($version == FALSE || is_null ( $version )) {
 	$version = 'none';
 }
 
+if ($username == 'terry' || $username == 'roger')
+	error_log ( "$currentScript : $username : $token" );
+
 try {
 	$dbh = new PDO ( 'spdb', '', '' );
 	// set the error reporting attribute.
 	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-
+	
 	$sql = "uspDARTLogin '$username', '$password', '$udid', '$version', '$deviceName', '$token'";
 	$stmt = $dbh->query ( $sql );
 	$result = $stmt->fetch ( PDO::FETCH_ASSOC );
 	// Returns -1 on invalid username or password
 	$userID = $result ['iUserID'];
 	$stmt->closeCursor ();
-
+	
 	if ($userID == - 1) {
 		$badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid login', $badXML );
 		echo $badXML;
 		exit ();
 	}
-
+	
 	$dbh = null;
 } catch ( PDOException $e ) {
 	$errMsg = $e->getFile () . ' (' . $e->getLine () . ')' . $e->getMessage () . " : username / password = " . $username . "/" . $password;
@@ -108,11 +111,11 @@ $resultStr .= "<userlname>" . mb_convert_encoding ( $result ['txtLastName'], "UT
 if ($result ['iUserID'] == DEBUG_USERID) {
 	$resultStr .= "<gpsdatafrequency>1</gpsdatafrequency>\n"; // Minutes
 	$resultStr .= "<gpsaccuracy>50</gpsaccuracy>\n"; // Meters
-	$resultStr .= "<gpsreportinterval>5</gpsreportinterval>\n"; // Minutes
+	$resultStr .= "<gpsreportinterval>5</gpsreportinterval>\n"; // # of points to accumulate before reporting
 } else {
 	$resultStr .= "<gpsdatafrequency>" . $result ['GPSFrequency'] . "</gpsdatafrequency>\n"; // Minutes
 	$resultStr .= "<gpsaccuracy>" . $result ['GPSAccuracy'] . "</gpsaccuracy>\n"; // Meters
-	$resultStr .= "<gpsreportinterval>" . $result ['GPSReporting'] . "</gpsreportinterval>\n"; // Minutes
+	$resultStr .= "<gpsreportinterval>" . $result ['GPSReporting'] . "</gpsreportinterval>\n"; // # of points to accumulate before reporting
 }
 $resultStr .= "</loginresponse>";
 echo $resultStr;

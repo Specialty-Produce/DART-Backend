@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <buildpath>
 	<buildpathentry combineaccessrules="false" kind="prj" path="/includes"/>
+	<buildpathentry combineaccessrules="false" kind="prj" path="/EDI_SP"/>
 	<buildpathentry external="true" kind="lib" path="C:/PHP/includes"/>
 	<buildpathentry kind="con" path="org.eclipse.php.core.LANGUAGE"/>
-	<buildpathentry combineaccessrules="false" kind="prj" path="/EDI_SP"/>
 	<buildpathentry kind="src" path=""/>
 </buildpath>

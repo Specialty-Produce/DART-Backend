@@ -19,6 +19,8 @@ $successXML = <<< EOT
 </deliverycomplete>
 EOT;
 
+exit();
+
 // Work through the files
 $jsonDataDir = opendir ( $jsonDataPath );
 if ($jsonDataDir != false) {

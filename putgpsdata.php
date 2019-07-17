@@ -22,7 +22,7 @@ dartLogging ( $currentScript, "jsondata=" . $appJSON );
 
 // appJSON
 if ($appJSON == FALSE || is_null ( $appJSON )) {
-	dartLogging ( $currentScript, "    jsondata is FALSE or NULL : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER ['HTTP_USER_AGENT'] );
+	dartLogging ( $currentScript, "    jsondata is FALSE or NULL : " . $_SERVER ['REMOTE_ADDR'] . " : " . $_SERVER ['HTTP_USER_AGENT'] );
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : No jsondata supplied', $badXML );
 	$badXML = preg_replace ( '/retry="true"/', 'retry="false"', $badXML );
 	echo $badXML;
@@ -72,7 +72,7 @@ try {
 	$lat = 0.0;
 	$lon = 0.0;
 	$theTime = date ( 'Y-m-d H:i:s' ) . '.000';
-	$acc = -1.0;
+	$acc = - 1.0;
 	
 	$dbh->beginTransaction ();
 	$stmt = $dbh->prepare ( "INSERT INTO tblGPSData
@@ -89,10 +89,16 @@ try {
 	$stmt->bindParam ( ':acc', $acc );
 	
 	foreach ( $gpsInfo as $entry ) {
+		
+		if (! isset ( $entry->timestamp )) {
+			dartLogging ( $currentScript, " : timestamp NOT SET : " . $gpsJSON );
+			dartLogging ( "errorreport.php", " : timestamp NOT SET : " . $gpsJSON );
+			continue;
+		}
 		$coordDateTime = date ( 'Y-m-d H:i:s', strtotime ( $entry->timestamp ) ) . '.000';
 		$lat = $entry->lat;
 		$lon = $entry->lon;
-		$acc = (isset($entry->acc)) ? $entry->acc : -1.0;
+		$acc = (isset ( $entry->acc )) ? $entry->acc : - 1.0;
 		$stmt->execute ();
 	}
 	$result = $dbh->commit ();
