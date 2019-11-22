@@ -13,6 +13,7 @@ require_once 'classes_SP/class_InvoiceBevager.php';
 require_once 'classes_SP/class_InvoiceCheftec.php';
 require_once 'classes_SP/class_InvoicePlateIQ.php';
 require_once 'classes_SP/class_InvoiceSP_Simple123.php';
+require_once 'classes_SP/class_InvoiceSP_QSROnline.php';
 require_once 'EDI_SP.php';
 require_once 'classes_SP/class_SP_FTP.php';
 require_once 'classes_SP/class_PHPMailerSP.php';
@@ -50,6 +51,7 @@ $r365FTP = true;
 $cheftecMail = true;
 $plateIQMail = true;
 $simple123CSV = true;
+$qsronlineCSV = true;
 
 // $resendArray = array (3123888,3123662,3123908,3123956,3123321);
 
@@ -77,6 +79,7 @@ if ($adhoc) {
 	$cheftecMail = false;
 	$plateIQMail = false;
 	$simple123CSV = false;
+	$qsronlineCSV = false;
 }
 
 $useCOG = false;
@@ -94,6 +97,7 @@ $bevagerIDs = array ();
 $cheftecEmails = array ();
 $plateIQEmail = '';
 $simple123IDs = array ();
+$qsronlineIDs = array ();
 $pppEmails = array ();
 $sqlFailed = true;
 $sqlAttemptCount = 1;
@@ -307,10 +311,21 @@ while ( $sqlFailed ) {
 			}
 		}
 		
+		// QSROnline
+		$stmt = $dbh->query ( "SELECT iLocationID FROM tblDartInvoiceSendQSROnline WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+		$qsronlineIDs = $stmt->fetchAll ( PDO::FETCH_ASSOC );
+		$stmt->closeCursor ();
+		if ($adhoc) {
+			if ($debug) {
+				$qsronlineIDs = array ();
+			}
+		}
+		
 		$dbh = null;
 	} catch ( PDOException $e ) {
 		$eMessage = $e->getMessage ();
-		$errMsg .= $e->getFile () . ' (' . $e->getLine () . ')' . " sqlAttemptCount=$sqlAttemptCount : " . $eMessage;
+		$errMsg = $e->getFile () . ' (' . $e->getLine () . ')' . " sqlAttemptCount=$sqlAttemptCount : " . $eMessage;
+		$errMsg .= "\nargv = " . print_r($argv, true);
 		$errMsg .= "\ninvXML = " . $invXML;
 		SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, 'sendinvoice.php DB' );
 		if (preg_match ( '/Timeout expired/', $eMessage ) || preg_match ( '/SQL Server does not exist or access denied/', $eMessage ) || preg_match ( '/deadlock victim/', $eMessage ) || preg_match ( '/Schema changed/', $eMessage )) {
@@ -797,7 +812,7 @@ EOT;
 				SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
 				continue;
 			}
-			$outFileName = 'O_SP_' . date ( 'ymd_His' ) . '.810';
+			$outFileName = 'O_SP_' . date ( 'ymd_His' ) . '_' . $loc ['saleID'] . '.810';
 			$outPath = EDISPConsts::FTP_ROOT;
 			$outPath .= (strlen ( $loc ['parentFTP'] ) > 0) ? $loc ['parentFTP'] . '\\' : '';
 			$outPath .= $loc ['ediID'] . '\\outgoing\\';
@@ -1109,6 +1124,31 @@ if ($cheftecMail) {
 if ($plateIQMail) {
 	if ($adhoc)
 		echo "Sending via PlateIQ...\n";
+	/*
+	 * if (in_array ( $locInfo [$argv [1]] ['id'], array (
+	 * 5241,
+	 * 5307
+	 * ) )) {
+	 * $invPlateIQ = new InvoicePlateIQ ();
+	 * foreach ( $locInfo as $loc ) {
+	 * try {
+	 * $piqString = $invPlateIQ->getPIQHeader ();
+	 * $invPlateIQ->retrieveInvoice ( $loc ['saleID'] );
+	 * $piqString .= $invPlateIQ->generatePIQOutput ();
+	 * $piqFilename = $loc ['id'] . '_' . $loc ['saleID'] . '_' . date ( 'ymd_His' ) . '.csv';
+	 * $piqFile = $invPlateIQ::FTP_DIR . $piqFilename;
+	 * $piqFH = fopen ( $piqFile, "w" );
+	 * fwrite ( $piqFH, $piqString );
+	 * fclose ( $piqFH );
+	 * SP_ErrorLogging ( "PlateIQ invoice " . $loc ['saleID'] . " put in FTP folder", true, '', "PlateIQ FTP" );
+	 * } catch ( SP_Exception $spe ) {
+	 * $errMsg = "PlateIQ : Retrieve invoice error : " . $spe->getMessage ();
+	 * SP_errorLogging ( $errMsg, true, '', $currentScript . " - Bevager error" );
+	 * continue;
+	 * }
+	 * }
+	 * } else
+	 */
 	if (strlen ( $plateIQEmail ) > 0) {
 		$plateIQFilename = $loc ['saleID'] . '.csv';
 		$plateIQFile = DART_PLATEIQ_DIR . $plateIQFilename;
@@ -1174,8 +1214,8 @@ if ($simple123CSV) {
 				$inv->retrieveInvoice ( $loc ['saleID'] );
 				fwrite ( $s123FH, $inv->generateInvoiceCSV () );
 			} catch ( SP_Exception $spe ) {
-				$errMsg = "Bevager : Retrieve invoice error : " . $spe->getMessage ();
-				SP_errorLogging ( $errMsg, true, '', $currentScript . " - Bevager error" );
+				$errMsg = "Simple123 : Retrieve invoice error : " . $spe->getMessage ();
+				SP_errorLogging ( $errMsg, true, '', $currentScript . " - Simple123 error" );
 				continue;
 			}
 		}
@@ -1183,7 +1223,34 @@ if ($simple123CSV) {
 	}
 } else {
 	if ($adhoc)
-		echo "NOT sending via FTP to Bevager...\n";
+		echo "NOT sending via FTP to Simple123...\n";
+}
+
+// QSROnline
+if ($qsronlineCSV) {
+	if ($adhoc)
+		echo "Sending via FTP to QSROnline...\n";
+	if (count ( $qsronlineIDs ) > 0) {
+		foreach ( $locInfo as $loc ) {
+			try {
+				$qsrFilename = $loc ['id'] . '_' . $loc ['saleID'] . '_' . date ( 'ymd_His' ) . '.csv';
+				$invQSR = new InvoiceSP_QSROnline ();
+				$invQSR->retrieveInvoice ( $loc ['saleID'] );
+				$qsrString = $invQSR->generateInvoiceCSV ();
+				$qsrFile = DART_QSR_DIR . $qsrFilename;
+				$qsrFH = fopen ( $qsrFile, "w" );
+				fwrite ( $qsrFH, $qsrString );
+				fclose ( $qsrFH );
+			} catch ( SP_Exception $spe ) {
+				$errMsg = "QSROnline : Retrieve invoice error : " . $spe->getMessage ();
+				SP_errorLogging ( $errMsg, true, '', $currentScript . " - QSROnline error" );
+				continue;
+			}
+		}
+	}
+} else {
+	if ($adhoc)
+		echo "NOT sending via FTP to QSROnline...\n";
 }
 
 // Remove the PDFs

@@ -278,7 +278,7 @@ $mail->addBCC("christopher@specialtyproduce.com");
 $sigLinks = '';
 foreach ( $jd->deliveryjson->invoice_list as $invoice ) {
 	$link = 'https://dart.specialtyproduce.com/websign/index.php?sid=' . urlencode ( simple_encrypt ( $invoice->saleid ) );
-	$sigLinks .= $invoice->saleid . ' : <a href="' . $link . '" target="_blank">' . $link . "</a><br/>";
+	$sigLinks .= $invoice->saleid . ' : <a clicktracking=off href="' . $link . '" target="_blank">' . $link . "</a><br/>";
 }
 $mail->Body = "Dear Sir or Madam,
 <p>The following invoice(s) for <b>$notifyLocation</b> have already been delivered but for whatever reason no signature was gathered at the time, or they need to be re-signed.</p>

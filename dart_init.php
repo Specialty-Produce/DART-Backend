@@ -21,6 +21,7 @@ define ( "DART_PLATEIQ_DIR", "C:/Temp/invoicePlateIQs/" );
 define ( "DART_CT_DIR", "C:/Temp/invoiceCTs/" );
 define ( "DART_HULA_DIR", "C:/inetpub/filezillaroot/RestaurantMatrix/outgoing/" );
 define ( "DART_BEVAGER_DIR", "C:/inetpub/filezillaroot/Bevager/" );
+define ( "DART_QSR_DIR", "C:/inetpub/filezillaroot/QSROnline/" );
 define ( "DART_SIMPLE123_DIR", "C:/SFTP_Root/Invoice/" );
 define ( "DART_SIG_DIR", "\\\\vServices\\dartsigs\$\\" );
 define ( "DART_FAX_DIR", "\\\\Server3\\DartFaxes\$\\" );

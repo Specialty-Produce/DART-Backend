@@ -26,7 +26,7 @@ PHP Version : <?php echo phpversion(); ?>
 	
 	$dbh = null;
 } catch ( PDOException $e ) {
-	$versionInfo = $e->getFile () . ' (' . $e->getLine () . ')' . $e->getMessage () . " : username / password = " . $username . "/" . $password;
+	$versionInfo = $e->getFile () . ' (' . $e->getLine () . ')' . $e->getMessage ();
 }
 echo $versionInfo;
 ?></p>
