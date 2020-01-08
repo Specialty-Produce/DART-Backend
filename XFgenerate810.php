@@ -53,7 +53,7 @@ if ($ediID == false || strlen ( $ediID ) == 0) {
 
 // Ok, we have a valid EDI ID, so just call the 810 functions
 $ftpOutgoing = FTP_ROOT . $ediID . '\outgoing';
-include_once 'EDI_SP\Receivers\\' . $ediID . '\ts810.php';
+include_once 'EDI_SP/Receivers/' . $ediID . '/ts810.php';
 $tsFunction = $ediID . '_810';
 list ( $success, $msg ) = $tsFunction ( $invNum );
 if (! $success) {

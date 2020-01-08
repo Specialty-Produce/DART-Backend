@@ -291,13 +291,13 @@ while ( $sqlFailed ) {
 		// PlateIQ
 		$stmt = $dbh->query ( "SELECT iLocationID, sEmail FROM tblDartInvoiceSendPlateIQ WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
 		$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-		$plateIQEmail = ($result ['iLocationID'] > 0) ? $result ['sEmail'] : '';
+		$plateIQEmailAddress = ($result ['iLocationID'] > 0) ? $result ['sEmail'] : '';
 		$stmt->closeCursor ();
 		if ($adhoc) {
 			if ($debug) {
-				$plateIQEmail = '';
+				$plateIQEmailAddress = '';
 				if ($plateIQMail)
-					$plateIQEmail = $debugMail;
+					$plateIQEmailAddress = $debugMail;
 			}
 		}
 		
@@ -325,7 +325,7 @@ while ( $sqlFailed ) {
 	} catch ( PDOException $e ) {
 		$eMessage = $e->getMessage ();
 		$errMsg = $e->getFile () . ' (' . $e->getLine () . ')' . " sqlAttemptCount=$sqlAttemptCount : " . $eMessage;
-		$errMsg .= "\nargv = " . print_r($argv, true);
+		$errMsg .= "\nargv = " . print_r ( $argv, true );
 		$errMsg .= "\ninvXML = " . $invXML;
 		SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, 'sendinvoice.php DB' );
 		if (preg_match ( '/Timeout expired/', $eMessage ) || preg_match ( '/SQL Server does not exist or access denied/', $eMessage ) || preg_match ( '/deadlock victim/', $eMessage ) || preg_match ( '/Schema changed/', $eMessage )) {
@@ -1124,72 +1124,68 @@ if ($cheftecMail) {
 if ($plateIQMail) {
 	if ($adhoc)
 		echo "Sending via PlateIQ...\n";
-	/*
-	 * if (in_array ( $locInfo [$argv [1]] ['id'], array (
-	 * 5241,
-	 * 5307
-	 * ) )) {
-	 * $invPlateIQ = new InvoicePlateIQ ();
-	 * foreach ( $locInfo as $loc ) {
-	 * try {
-	 * $piqString = $invPlateIQ->getPIQHeader ();
-	 * $invPlateIQ->retrieveInvoice ( $loc ['saleID'] );
-	 * $piqString .= $invPlateIQ->generatePIQOutput ();
-	 * $piqFilename = $loc ['id'] . '_' . $loc ['saleID'] . '_' . date ( 'ymd_His' ) . '.csv';
-	 * $piqFile = $invPlateIQ::FTP_DIR . $piqFilename;
-	 * $piqFH = fopen ( $piqFile, "w" );
-	 * fwrite ( $piqFH, $piqString );
-	 * fclose ( $piqFH );
-	 * SP_ErrorLogging ( "PlateIQ invoice " . $loc ['saleID'] . " put in FTP folder", true, '', "PlateIQ FTP" );
-	 * } catch ( SP_Exception $spe ) {
-	 * $errMsg = "PlateIQ : Retrieve invoice error : " . $spe->getMessage ();
-	 * SP_errorLogging ( $errMsg, true, '', $currentScript . " - Bevager error" );
-	 * continue;
-	 * }
-	 * }
-	 * } else
-	 */
-	if (strlen ( $plateIQEmail ) > 0) {
-		$plateIQFilename = $loc ['saleID'] . '.csv';
-		$plateIQFile = DART_PLATEIQ_DIR . $plateIQFilename;
-		$plateIQFH = fopen ( $plateIQFile, "w" );
+	if (strtoupper ( $plateIQEmailAddress ) == 'FTP') {
 		$invPlateIQ = new InvoicePlateIQ ();
-		$piqString = $invPlateIQ->getPIQHeader ();
 		foreach ( $locInfo as $loc ) {
 			try {
+				$piqString = $invPlateIQ->getPIQHeader ();
 				$invPlateIQ->retrieveInvoice ( $loc ['saleID'] );
 				$piqString .= $invPlateIQ->generatePIQOutput ();
+				$piqFilename = $loc ['id'] . '_' . $loc ['saleID'] . '_' . date ( 'ymd_His' ) . '.csv';
+				$piqFile = $invPlateIQ::FTP_DIR . $piqFilename;
+				$piqFH = fopen ( $piqFile, "w" );
+				fwrite ( $piqFH, $piqString );
+				fclose ( $piqFH );
+				// SP_ErrorLogging ( "PlateIQ invoice " . $loc ['saleID'] . " put in FTP folder", true, '', "PlateIQ FTP" );
 			} catch ( SP_Exception $spe ) {
-				$errMsg = "RSI : Retrieve invoice error : " . $spe->getMessage ();
-				SP_errorLogging ( $errMsg, true, '', $currentScript . " - RSI error" );
+				$errMsg = "PlateIQ : Retrieve invoice error : " . $spe->getMessage ();
+				SP_errorLogging ( $errMsg, true, '', $currentScript . " - Bevager error" );
 				continue;
 			}
 		}
-		fwrite ( $plateIQFH, $piqString );
-		fclose ( $plateIQFH );
-		// error_log("sendinvoice.php : PlateIQ : Start\n{$piqString}End");
-		$mail->FromName = "Specialty Produce Accounting";
-		$mail->From = "ar@specialtyproduce.com";
-		$mail->AddAddress ( $plateIQEmail );
-		if ($debug)
-			$mail->AddBCC ( $debugMail, $debugName );
-		$mail->Subject = "Specialty Produce Imported Invoice";
-		$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
-		$mail->AddAttachment ( $plateIQFile, $plateIQFilename );
-		// Add the body
-		$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " . $locInfo [$argv [1]] ['name'] . "\n - Specialty Produce System";
-		// Send the email
-		if (! $mail->Send ()) {
-			$errMsg = "PlateIQ : Send mail error : " . $plateIQEmail;
-			SP_errorLogging ( $errMsg, true, '', $currentScript . " - RSI error" );
+	} else {
+		if (strlen ( $plateIQEmail ) > 0) {
+			$plateIQFilename = $loc ['saleID'] . '.csv';
+			$plateIQFile = DART_PLATEIQ_DIR . $plateIQFilename;
+			$plateIQFH = fopen ( $plateIQFile, "w" );
+			$invPlateIQ = new InvoicePlateIQ ();
+			$piqString = $invPlateIQ->getPIQHeader ();
+			foreach ( $locInfo as $loc ) {
+				try {
+					$invPlateIQ->retrieveInvoice ( $loc ['saleID'] );
+					$piqString .= $invPlateIQ->generatePIQOutput ();
+				} catch ( SP_Exception $spe ) {
+					$errMsg = "RSI : Retrieve invoice error : " . $spe->getMessage ();
+					SP_errorLogging ( $errMsg, true, '', $currentScript . " - RSI error" );
+					continue;
+				}
+			}
+			fwrite ( $plateIQFH, $piqString );
+			fclose ( $plateIQFH );
+			// error_log("sendinvoice.php : PlateIQ : Start\n{$piqString}End");
+			$mail->FromName = "Specialty Produce Accounting";
+			$mail->From = "ar@specialtyproduce.com";
+			$mail->AddAddress ( $plateIQEmailAddress );
+			if ($debug)
+				$mail->AddBCC ( $debugMail, $debugName );
+			$mail->Subject = "Specialty Produce Imported Invoice";
+			$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
+			$mail->AddAttachment ( $plateIQFile, $plateIQFilename );
+			// Add the body
+			$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " . $locInfo [$argv [1]] ['name'] . "\n - Specialty Produce System";
+			// Send the email
+			if (! $mail->Send ()) {
+				$errMsg = "PlateIQ : Send mail error : " . $plateIQEmail;
+				SP_errorLogging ( $errMsg, true, '', $currentScript . " - RSI error" );
+			}
+			$mail->ClearAttachments ();
+			$mail->ClearAllRecipients ();
+			// SP_ErrorLogging ( "PlateIQ sent for $plateIQFilename : " . file_get_contents ( $plateIQFile ), true, "", "PlateIQ Alert" );
+			sleep ( 3 );
+			unlink ( $plateIQFile );
 		}
-		$mail->ClearAttachments ();
 		$mail->ClearAllRecipients ();
-		// SP_ErrorLogging ( "PlateIQ sent for $plateIQFilename : " . file_get_contents ( $plateIQFile ), true, "", "PlateIQ Alert" );
-		sleep ( 3 );
-		unlink ( $plateIQFile );
 	}
-	$mail->ClearAllRecipients ();
 } else {
 	if ($adhoc)
 		echo "NOT sending via RSI...\n";
