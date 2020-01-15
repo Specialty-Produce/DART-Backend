@@ -17,6 +17,7 @@ require_once 'classes_SP/class_InvoiceSP_QSROnline.php';
 require_once 'EDI_SP.php';
 require_once 'classes_SP/class_SP_FTP.php';
 require_once 'classes_SP/class_PHPMailerSP.php';
+require_once 'classes_SP/class_SRFaxSP.php';
 function sortLineItems($a, $b) {
 	global $useCOG;
 	if ($useCOG) {
@@ -52,6 +53,8 @@ $cheftecMail = true;
 $plateIQMail = true;
 $simple123CSV = true;
 $qsronlineCSV = true;
+
+$faxViaSRFax = true;
 
 // $resendArray = array (3123888,3123662,3123908,3123956,3123321);
 
@@ -650,10 +653,16 @@ if ($pdfFax) {
 		if ($adhoc)
 			echo "Sending PDFs via fax...\n";
 		$faxNumCount = 0;
+		$srFax = ($faxViaSRFax) ? new SRFaxSP ( 'acct' ) : null;
 		foreach ( $sendFaxes as $faxInfo ) {
 			$faxNumCount ++;
 			foreach ( $locInfo as $invoice ) {
-				$aixXML = "<SILENTFAX_AIX>
+				if ($faxViaSRFax) {
+					$outName = $invoice ['saleID'] . ".pdf";
+					$outPath = DART_PDF_DIR . $invoice ['saleID'] . ".pdf";
+					$srFax->sendFax ( $invoice ['id'], 'Invoice', $faxInfo ['faxSilent'], $outName, $outPath );
+				} else {
+					$aixXML = "<SILENTFAX_AIX>
 
 <AIX_ACTION>FAX</AIX_ACTION>
 <REF_CODE>Invoice {$invoice['saleID']}</REF_CODE>
@@ -669,12 +678,18 @@ if ($pdfFax) {
 <TO_NAME>{$faxInfo['name']}</TO_NAME>
 
 </SILENTFAX_AIX>";
-				$invoicePDFFileName = DART_PDF_DIR . $invoice ['saleID'] . ".pdf";
-				$outputAIXFileName = DART_PDF_DIR . $invoice ['saleID'] . "_" . $faxNumCount . ".aix";
-				file_put_contents ( $outputAIXFileName, $aixXML );
-				$responseCopy = copy ( $invoicePDFFileName, SILENT_FAX_DIR . $invoice ['saleID'] . "_" . $faxNumCount . ".pdf" );
-				$responseCopy = copy ( $outputAIXFileName, SILENT_FAX_DIR . $invoice ['saleID'] . "_" . $faxNumCount . ".aix" );
+					$invoicePDFFileName = DART_PDF_DIR . $invoice ['saleID'] . ".pdf";
+					$outputAIXFileName = DART_PDF_DIR . $invoice ['saleID'] . "_" . $faxNumCount . ".aix";
+					file_put_contents ( $outputAIXFileName, $aixXML );
+					$responseCopy = copy ( $invoicePDFFileName, SILENT_FAX_DIR . $invoice ['saleID'] . "_" . $faxNumCount . ".pdf" );
+					$responseCopy = copy ( $outputAIXFileName, SILENT_FAX_DIR . $invoice ['saleID'] . "_" . $faxNumCount . ".aix" );
+				}
 			}
+		}
+		if ($faxViaSRFax) {
+			$srFax->writeQueueLogToDB ();
+			if (count ( $srFax->errorLog ) > 0)
+				SP_ErrorLogging ( "SR Fax Send Errors : $currentScript \n" . implode ( "\n", $srFax->errorLog ), true, '', "SR Fax Send Errors" );
 		}
 	} else {
 		if ($adhoc)
