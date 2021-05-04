@@ -84,8 +84,8 @@ foreach ( $routeInfo as $entry ) {
 		// It is a new location to enter into the array
 		// mb_convert_encoding ( $result['tSeasonal'], "UTF-8", "Windows-1252" )
 		$location [$locID] = array ('id' => $locID, 'sort' => 1, 'lastupdate' => $lastUpdate, 'name' => mb_convert_encoding ( $entry ['sDescription'], "UTF-8", "Windows-1252" ), 'street' => mb_convert_encoding ( $entry ['sAddress1'], "UTF-8", "Windows-1252" ),
-				'city' => mb_convert_encoding ( $entry ['sCity'], "UTF-8", "Windows-1252" ), 'state' => mb_convert_encoding ( $entry ['sState'], "UTF-8", "Windows-1252" ), 'zip' => mb_convert_encoding ( $entry ['sPostalCode'], "UTF-8", "Windows-1252" ), 'gpslat' => $entry ['sGpsLat'],
-				'gpslon' => $entry ['sGpsLon'], 'phone' => mb_convert_encoding ( $entry ['sPhone'], "UTF-8", "Windows-1252" ), 'deliverytime' => $entry ['sTime'], 'requirespaper' => $entry ['iInvoiceException'], 'allowdarkdrop' => ($entry ['iNDS'] == 0) ? 'true' : 'false',
+				'city' => mb_convert_encoding ( $entry ['sCity'], "UTF-8", "Windows-1252" ), 'state' => mb_convert_encoding ( $entry ['sState'], "UTF-8", "Windows-1252" ), 'zip' => mb_convert_encoding ( $entry ['sPostalCode'], "UTF-8", "Windows-1252" ), 'gpslat' => trim($entry ['sGpsLat']),
+				'gpslon' => trim($entry ['sGpsLon']), 'phone' => mb_convert_encoding ( $entry ['sPhone'], "UTF-8", "Windows-1252" ), 'deliverytime' => $entry ['sTime'], 'requirespaper' => $entry ['iInvoiceException'], 'allowdarkdrop' => ($entry ['iNDS'] == 0) ? 'true' : 'false',
 				'locnotes' => mb_convert_encoding ( $entry ['txtLocationNotes'], "UTF-8", "Windows-1252" ), 'salesname' => mb_convert_encoding ( $entry ['txtSalesPerson'], "UTF-8", "Windows-1252" ), 'salesemail' => mb_convert_encoding ( $entry ['txtEmail'], "UTF-8", "Windows-1252" ),
 				'salesphone' => mb_convert_encoding ( $entry ['txtCellPhone'], "UTF-8", "Windows-1252" ), 'acctnote' => mb_convert_encoding ( $entry ['sAccountingNote'], "UTF-8", "Windows-1252" ), 'terms' => mb_convert_encoding ( $entry ['sTerms'], "UTF-8", "Windows-1252" ), 'invoices' => array (),
 				'signers' => array ());

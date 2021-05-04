@@ -1,7 +1,7 @@
 <?php
 include_once 'global_CDC.php';
 include 'dart_init.php';
-require_once 'PHPMailer5.2/PHPMailerAutoload.php';
+require_once 'classes_SP/class_PHPMailerSP.php';
 
 $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 
@@ -81,12 +81,8 @@ if ($note == FALSE || is_null ( $note )) {
 }
 
 // Instantiate the mail stuff
-$mail = new PHPMailer ();
-$mail->IsSMTP ();
-$mail->SMTPOptions = array ('ssl' => array ('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
-$mail->Host = SPConsts::PHPMailerHostIP;
-$mail->Helo = "vDart-PHP";
-$mail->SMTPAuth = false;
+$mail = new PHPMailerSP ();
+$mail->setApiKey ( 'acct' );
 $mail->FromName = "DART System";
 $mail->From = "itadmin@specialtyproduce.com";
 $mail->Subject = "Location GPS/Note Update";

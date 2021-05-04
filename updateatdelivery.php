@@ -87,10 +87,11 @@ while ( $sqlFailed ) {
 		$errMsg = "SQL = $sql\n";
 		$eMessage = $e->getMessage ();
 		$errMsg .= $e->getFile () . ' (' . $e->getLine () . ')' . " sqlAttemptCount=$sqlAttemptCount : " . $eMessage;
-		$errMsg .= "\n\ninvXML = " . $invXML;
+		$errMsg .= "\n\ninvXML = " . htmlentities ( $invXML );
 		$errMsg .= "\n\n\$codeStr = $codeStr";
-		SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
-		if (preg_match ( '/Timeout expired/', $eMessage ) || preg_match ( '/SQL Server does not exist or access denied/', $eMessage ) || preg_match ( '/deadlock victim/', $eMessage )) {
+		$errMsg .= "\n\n\$sqlAttemptCount = $sqlAttemptCount";
+		if (preg_match ( '/Timeout expired/', $eMessage ) || preg_match ( '/SQL Server does not exist or access denied/', $eMessage ) || preg_match ( '/deadlock victim/', $eMessage ) || preg_match ( '/Schema changed/', $eMessage )) {
+			SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, 'DART : UpdateAtDelivery Retry' );
 			if ($sqlAttemptCount < DART_SQL_TIMEOUT_MAX_TRIES) {
 				$sqlAttemptCount ++;
 				$sqlFailed = true;
@@ -102,6 +103,7 @@ while ( $sqlFailed ) {
 				exit ();
 			}
 		} else {
+			SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, 'DART : UpdateAtDelivery Serious' );
 			$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
 			echo $badXML;
 			exit ();
@@ -110,7 +112,7 @@ while ( $sqlFailed ) {
 }
 
 if ($result === false) {
-	$errMsg = "uspDARTDelivered $updateCode, $invXML returned FALSE";
+	$errMsg = "$currentScript : uspDARTDelivered $updateCode, $invXML returned FALSE";
 	$errMsg .= "\n\n\$codeStr = $codeStr";
 	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );

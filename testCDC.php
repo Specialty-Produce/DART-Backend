@@ -16,6 +16,8 @@ $successXML = <<< EOT
 </deliverycomplete>
 EOT;
 
+exit();
+
 // Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
 $codeStr = generateRandomCode ( 6 );
 

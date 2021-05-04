@@ -21,15 +21,15 @@ try {
 	$dbh = new PDO ( 'spdb', '', '' );
 	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
 	
-	$stmt = $dbh->query ( "select top 1 dtVersion, siPad from tblDartVersion where siPad is not null order by dtCreated desc" );
+	$stmt = $dbh->query ( "select top 1 dtVersion, siPad from tblDartVersion where siPad is not null and len(siPad) > 0 order by dtCreated desc" );
 	$versioniPad = $stmt->fetch ( PDO::FETCH_ASSOC );
 	$stmt->closeCursor ();
 	
-	$stmt = $dbh->query ( "select top 1 dtVersion, siPhone from tblDartVersion where siPhone is not null order by dtCreated desc" );
+	$stmt = $dbh->query ( "select top 1 dtVersion, siPhone from tblDartVersion where siPhone is not null and len(sIphone) > 0 order by dtCreated desc" );
 	$versioniPhone = $stmt->fetch ( PDO::FETCH_ASSOC );
 	$stmt->closeCursor ();
 	
-	$stmt = $dbh->query ( "select top 1 dtVersion, siPhoneDB from tblDartVersion where siPhoneDB is not null order by dtCreated desc" );
+	$stmt = $dbh->query ( "select top 1 dtVersion, siPhoneDB from tblDartVersion where siPhoneDB is not null and len(siPhoneDB) > 0 order by dtCreated desc" );
 	$versioniPhoneDB = $stmt->fetch ( PDO::FETCH_ASSOC );
 	$stmt->closeCursor ();
 	
