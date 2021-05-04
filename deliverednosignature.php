@@ -234,7 +234,7 @@ while ( $sqlFailed ) {
 }
 
 if ($resultDelivered === false) {
-	$errMsg = "uspDARTDelivered $updateCode, $signerID, $invXML returned FALSE : $codeStr";
+	$errMsg = "$currentScript : uspDARTDelivered $updateCode, $signerID, $invXML returned FALSE : $codeStr";
 	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 	dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
@@ -243,7 +243,7 @@ if ($resultDelivered === false) {
 }
 
 if ($resultUpdateChanges === false) {
-	$errMsg = "uspDARTDeliveryCompleteUpdates $saleDetailXML returned FALSE : $codeStr";
+	$errMsg = "$currentScript : uspDARTDeliveryCompleteUpdates $saleDetailXML returned FALSE : $codeStr";
 	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 	dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
@@ -252,7 +252,7 @@ if ($resultUpdateChanges === false) {
 }
 
 if ($resultDeliveryFail === false) {
-	$errMsg = "uspDARTUpdateAtDeliveryFail $updateAtDeliveryFailXML returned FALSE : $codeStr";
+	$errMsg = "$currentScript : uspDARTUpdateAtDeliveryFail $updateAtDeliveryFailXML returned FALSE : $codeStr";
 	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 	dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
@@ -277,7 +277,7 @@ $mail->addAddress ( $notifyEmail );
 $mail->addBCC("christopher@specialtyproduce.com");
 $sigLinks = '';
 foreach ( $jd->deliveryjson->invoice_list as $invoice ) {
-	$link = 'https://dart.specialtyproduce.com/websign/index.php?sid=' . urlencode ( simple_encrypt ( $invoice->saleid ) );
+	$link = 'https://dart.specialtyproduce.com/websign/index.php?sid=' . urlencode ( simple_openssl_encrypt ( $invoice->saleid ) );
 	$sigLinks .= $invoice->saleid . ' : <a clicktracking=off href="' . $link . '" target="_blank">' . $link . "</a><br/>";
 }
 $mail->Body = "Dear Sir or Madam,

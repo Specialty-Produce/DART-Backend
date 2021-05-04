@@ -5,7 +5,7 @@ $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 
 // APN constants
 // $cert = array ();
-$cert = 'include\190418_DART_Universal_SSL_Cert.pem';
+$cert = 'include\Enterprise_PROD_aps_MAY2020.pem';
 // $cert ['p'] = 'include\190412_APN_PROD.pem';
 $host = array ();
 $host ['d'] = 'gateway.sandbox.push.apple.com';
@@ -88,6 +88,7 @@ if (isset ( $_POST ['apnSubmit'] )) {
 	
 	// Initialize
 	$apn = new APN_SP ( $cert, $host [$tokenType], 2195, 'include\Entrust_CA_2048.pem' );
+	$apn->setPushPriority ( $pushType, $priority );
 	list ( $initResult, $errMsg ) = $apn->initialize ();
 	if ($initResult == false) {
 		echo "<br/><br/>initialize() returned FALSE : error message = " . $errMsg . "<br/><br/>\n";
@@ -123,14 +124,6 @@ if (isset ( $_POST ['apnSubmit'] )) {
 		if (strlen ( $iid ) > 0) {
 			$payload .= ',';
 			$payload .= '"iid":"' . $iid . '"';
-		}
-		if (strlen ( $pushType ) > 0) {
-			$payload .= ',';
-			$payload .= '"apns-push-type":"' . $pushType . '"';
-		}
-		if (strlen ( $priority ) > 0) {
-			$payload .= ',';
-			$payload .= '"apns-priority":"' . $priority . '"';
 		}
 		$payload .= '}';
 		
@@ -185,15 +178,11 @@ if (isset ( $_POST ['apnSubmit'] )) {
 				?>" /> <br /> <br />"invoice" id : <input type="text" name="iID"
 				value="<?php
 				echo $iid;
-				?>" />
-				
-				<br /> <br />"push-type" value : <input type="text" name="aptPushType"
-				value="<?php
+				?>" /> <br /> <br />"push-type" value : <input type="text"
+				name="aptPushType" value="<?php
 				echo $pushType;
-				?>" />
-				
-				<br /> <br />"priority" value : <input type="text" name="aptPriority"
-				value="<?php
+				?>" /> <br /> <br />"priority" value : <input type="text"
+				name="aptPriority" value="<?php
 				echo $priority;
 				?>" /> <br /> <!--
 Additional key-value pairs:<br/>

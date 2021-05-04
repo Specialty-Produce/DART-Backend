@@ -13,7 +13,7 @@ EOT;
 $logfile = filter_input ( INPUT_POST, 'logfile', FILTER_SANITIZE_STRING );
 $logdata = filter_input ( INPUT_POST, 'logdata' );
 
-$logFileFile = "C:/Temp/DARTLogs/" . $logfile;
+$logFileFile = "/home/site/Temp/DARTLogs/" . $logfile;
 
 dartLogging ( $currentScript, $logfile );
 
@@ -22,7 +22,7 @@ if (file_exists($logFileFile)) {
 }
 
 // Write to PHP logs folder
-file_put_contents ( "C:/Temp/DARTLogs/" . $logfile, $logdata, FILE_APPEND );
+file_put_contents ( "/home/site/Temp/DARTLogs/" . $logfile, $logdata, FILE_APPEND );
 
 // Generate the XML
 $resultStr = <<< EOT

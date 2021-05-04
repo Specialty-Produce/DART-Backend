@@ -63,9 +63,6 @@ if ($version == FALSE || is_null ( $version )) {
 	$version = 'none';
 }
 
-if ($username == 'terry' || $username == 'roger')
-	error_log ( "$currentScript : $username : $token" );
-
 try {
 	$dbh = new PDO ( 'spdb', '', '' );
 	// set the error reporting attribute.

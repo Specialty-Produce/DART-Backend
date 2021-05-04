@@ -11,26 +11,19 @@ define ( "DELIVERY_NO_SIGNATURE_ID", 96107 );
 // Logging
 define ( "DART_ERROR_LOG", "dart_errors" );
 define ( "DART_REPORTING", "dart_reporting" );
-define ( "DART_LOG_DIR", "C:/inetpub/wwwroot/Dart/logs/" );
+define ( "DART_LOG_DIR", "/home/site/wwwroot/logs/" );
 
 // Invoice-related
-define ( "DART_PDF_DIR", "C:/Temp/invoicePDFs/" );
-define ( "DART_RSI_DIR", "C:/Temp/invoiceRSIs/" );
-define ( "DART_PPP_DIR", "C:/Temp/invoicePPPs/" );
-define ( "DART_PLATEIQ_DIR", "C:/Temp/invoicePlateIQs/" );
-define ( "DART_CT_DIR", "C:/Temp/invoiceCTs/" );
+define ( "DART_SIG_DIR", "/home/site/dartsigs/" );
+define ( "DART_PDF_DIR", "/home/site/Temp/invoicePDFs/" );
+define ( "DART_RSI_DIR", "/home/site/Temp/invoiceRSIs/" );
+define ( "DART_PPP_DIR", "/home/site/Temp/invoicePPPs/" );
+define ( "DART_PLATEIQ_DIR", "/home/site/Temp/invoicePlateIQs/" );
+define ( "DART_CT_DIR", "/home/site/Temp/invoiceCTs/" );
 define ( "DART_HULA_DIR", "C:/inetpub/filezillaroot/RestaurantMatrix/outgoing/" );
-define ( "DART_BEVAGER_DIR", "C:/inetpub/filezillaroot/Bevager/" );
-define ( "DART_QSR_DIR", "C:/inetpub/filezillaroot/QSROnline/" );
+// define ( "DART_BEVAGER_DIR", "C:/inetpub/filezillaroot/Bevager/" );
+// define ( "DART_QSR_DIR", "C:/inetpub/filezillaroot/QSROnline/" );
 define ( "DART_SIMPLE123_DIR", "C:/SFTP_Root/Invoice/" );
-define ( "DART_SIG_DIR", "\\\\vServices\\dartsigs\$\\" );
-define ( "DART_FAX_DIR", "\\\\Server3\\DartFaxes\$\\" );
-
-// Silent Fax
-define ( "SILENT_FAX_DIR", "\\\\SilentFax\\AIX_WOutbox\\" );
-
-// For use by the XFresh invoice retrieval
-define ( "SCAN_INVOICE_DIR", "\\\\vServices\\invoices\$\\" );
 
 // Kludge to have users never get invoices
 define ( "DONT_SEND_INVOICE_EMAIL", "dontsendinvoices@specialtyproduce.com" );

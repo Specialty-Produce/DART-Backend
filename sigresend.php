@@ -2,6 +2,7 @@
 include_once 'global_CDC.php';
 include 'dart_init.php';
 include_once 'classes_SP/class_InvoiceSP.php';
+include_once 'classes_SP/class_AzureFileSP.php';
 $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 
 // Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
@@ -20,7 +21,7 @@ $successXML = <<< EOT
 </sigresend>
 EOT;
 
-dartLogging ( $currentScript, "post=" . print_r($_POST, true), $codeStr );
+dartLogging ( $currentScript, "post=" . print_r ( $_POST, true ), $codeStr );
 
 // Get the POST data
 // iPad Name
@@ -38,8 +39,8 @@ if ($sigfilename == FALSE || is_null ( $sigfilename )) {
 	echo $badXML;
 	exit ();
 }
-preg_match('/[^\d]+_(\d+)_.+/', $sigfilename, $matches);
-$saleID = $matches[1];
+preg_match ( '/[^\d]+_(\d+)_.+/', $sigfilename, $matches );
+$saleID = $matches [1];
 
 // Signature data
 $sigdata = filter_input ( INPUT_POST, 'sigdata', FILTER_SANITIZE_STRING );
@@ -51,10 +52,10 @@ if ($sigdata == FALSE || is_null ( $sigdata )) {
 
 // Get the invoice information
 try {
-	$inv = new InvoiceSP();
-	$inv->retrieveInvoice($saleID);
-	$locationID = $inv->getLocationID();
-} catch (SP_Exception $e) {
+	$inv = new InvoiceSP ();
+	$inv->retrieveInvoice ( $saleID );
+	$locationID = $inv->getLocationID ();
+} catch ( SP_Exception $e ) {
 	dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
 	echo $badXML;
@@ -113,6 +114,24 @@ if (! imagepng ( $imgDest, $file )) {
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Could not save png image', $badXML );
 	echo $badXML;
 	exit ();
+}
+
+// Azure
+try {
+	$azf = new AzureFileSP ( 'specprodshares' );
+	// Directory exists?
+	if (! $azf->checkPathExists ( AFSPConstants::AZURE_SPS_DARTSIG, $locationID )) {
+		$azf->createDirectory ( AFSPConstants::AZURE_SPS_DARTSIG, $locationID, '' );
+	}
+	// Write it out
+	$fileName = $saleID . ".png";
+	$filePath = SPConsts::TempDir . $fileName;
+	imagepng ( $imgDest, $filePath );
+	$azf->putFile ( AFSPConstants::AZURE_SPS_DARTSIG, $locationID, $fileName, $filePath );
+	unlink ( $filePath );
+	SP_ErrorLogging ( "DART Sig Resend Azure : $locationID / $saleID", true, '', 'DART Sig Resend Azure' );
+} catch ( SP_Exception $e ) {
+	SP_ErrorLogging ( $e->getMessage (), true, DART_ERROR_LOG, 'DART Azure Sig Error' );
 }
 
 echo $successXML;

@@ -81,7 +81,7 @@ try {
 }
 
 if ($result === false) {
-	$errMsg = "uspDARTDelivered $updateCode, $invXML returned FALSE";
+	$errMsg = "$currentScript : uspDARTDelivered $updateCode, $invXML returned FALSE";
 	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
 	$badXML = preg_replace ( '/false/', 'true', $badXML );

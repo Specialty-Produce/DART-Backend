@@ -1,5 +1,6 @@
 <?php
 include_once 'global_CDC.php';
+include_once 'classes_SP/class_AzureFileSP.php';
 include 'dart_init.php';
 $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 
@@ -111,16 +112,27 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 	$filedir = DART_SIG_DIR . $jd->deliveryjson->delivery->locationid;
 	if (! is_dir ( $filedir )) {
 		if (! mkdir ( $filedir )) {
-			$errMsg = "Could not create folder for locationID = " . $jd->deliveryjson->delivery->locationid;
+			$errMsg = "DART : Could not create folder for locationID = " . $jd->deliveryjson->delivery->locationid;
 			dartLogging ( $currentScript, "    Could not create folder for locationID = " . $jd->deliveryjson->delivery->locationid, $codeStr );
-			SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
+			SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, "DART : Could not create folder : $currentScript" );
 			$badXML = preg_replace ( '/XXX/', $currentScript . ' : Could not create folder for locationID = ' . $jd->deliveryjson->delivery->locationid, $badXML );
 			echo $badXML;
 			exit ();
 		}
 	}
+	
+	// Check if location folder exists in Azure
+	try {
+		$azf = new AzureFileSP ( 'specprodshares' );
+		if (! $azf->checkPathExists ( AFSPConstants::AZURE_SPS_DARTSIG, $jd->deliveryjson->delivery->locationid )) {
+			$azf->createDirectory ( AFSPConstants::AZURE_SPS_DARTSIG, $jd->deliveryjson->delivery->locationid, '' );
+		}
+	} catch ( SP_Exception $e ) {
+		SP_ErrorLogging ( $e->getMessage (), true, DART_ERROR_LOG, 'DART Azure Sig Dir Error' );
+	}
 	// Convert the image to 24-bit and save
 	foreach ( $jd->deliveryjson->invoice_list as $invoice ) {
+		$fileName = $invoice->saleid . ".png";
 		$file = $filedir . '/' . $invoice->saleid . ".png";
 		
 		// Create from the encoded string
@@ -167,18 +179,19 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 			echo $badXML;
 			exit ();
 		}
+		
+		// Write to Azure
+		try {
+			$filePath = SPConsts::TempDir . $fileName;
+			imagepng ( $imgDest, $filePath );
+			$azf->putFile ( AFSPConstants::AZURE_SPS_DARTSIG, $jd->deliveryjson->delivery->locationid, $fileName, $filePath );
+			unlink ( $filePath );
+		} catch ( SP_Exception $e ) {
+			$errMsg = $e->getMessage ();
+			SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, 'DART Sig Error' );
+		}
 	}
 }
-
-// DEBUG sql timeout
-/*
- * if (rand ( 1, 2 ) == 1) { sleep ( DART_SQL_TIMEOUT_MAX_TRIES * DART_SQL_TIMEOUT_SLEEP ); $badXML = preg_replace ( '/XXX/', $currentScript . ' : Database timeout, see ' . DART_ERROR_LOG . ' log', $badXML ); $badXML = preg_replace ( '/code="0"/', 'code="' . DART_ERR_SQL_DB_TIMEOUT . '"', $badXML ); echo $badXML; exit (); }
- */
-
-// Quick fix
-/*
- * if ($jd->deliveryjson->delivery->signerinfo->lname == 'CaÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â±ez') $jd->deliveryjson->delivery->signerinfo->lname = 'C';
- */
 
 // Get the invoices marked as "delivered", which is code 2 for this stored procedure
 $updateCode = 2;
@@ -193,10 +206,14 @@ while ( $sqlFailed ) {
 		$dbh = new PDO ( 'spdb', '', '' );
 		$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
 		
-		// Prep for the XML version of invoice list for the stored procedure
+		// Prep for the XML version of invoice list for the stored procedure and collect cancelled invoices
+		$cancelledByUserSaleIDs = array ();
 		$invXML = "<ROOT>\n";
-		foreach ( $jd->deliveryjson->invoice_list as $invoice )
+		foreach ( $jd->deliveryjson->invoice_list as $invoice ) {
 			$invXML .= '<Rec rID="' . $invoice->saleid . '" dtDelTime="' . $invoice->signtimestamp . '"/>' . "\n";
+			if ($invoice->status == 'CANCELED BY USER')
+				$cancelledByUserSaleIDs [] = $invoice->saleid;
+		}
 		$invXML .= "</ROOT>";
 		
 		// Check if this is a repeat call to deliverycomplete.php
@@ -272,6 +289,12 @@ while ( $sqlFailed ) {
 		$sql = "uspDARTDelivered $updateCode, $signerID, '" . $invXML . "'";
 		$resultDelivered = $dbh->exec ( $sql );
 		
+		// Update any "Cancelled by user" invoices
+		if (count ( $cancelledByUserSaleIDs ) > 0) {
+			// $sql = "uspDARTDelivered '" . implode(',', $cancelledByUserSaleIDs);
+			// $resultUpdateCancelled = $dbh->exec ( $sql );
+		}
+		
 		// We need to build the list of invoices that have lastupdatetime values different between database and ipad
 		$updateAtDeliveryFailXML = '';
 		$saleDetailXML = '';
@@ -283,7 +306,8 @@ while ( $sqlFailed ) {
 			}
 			foreach ( $invoice->invoice_item_list as $line ) {
 				if ($line->edited == "true" || $getAllLines == true) {
-					$saleDetailXML .= '<Rec rID="' . $line->lineid . '" iUnitID="' . $line->finalunitid . '" fQty="' . $line->finalqship . '" mUnitPrice="' . $line->finalunitprice . '" iStatus= "' . '' . '"/>' . "\n";
+					$editReason = (isset ( $line->editreason )) ? $line->editreason : '';
+					$saleDetailXML .= '<Rec rID="' . $line->lineid . '" iUnitID="' . $line->finalunitid . '" fQty="' . $line->finalqship . '" mUnitPrice="' . $line->finalunitprice . '" iStatus= "' . $editReason . '"/>' . "\n";
 				}
 			}
 		}
@@ -311,8 +335,9 @@ while ( $sqlFailed ) {
 		$errMsg .= $e->getFile () . ' (' . $e->getLine () . ')' . " sqlAttemptCount=$sqlAttemptCount : " . $eMessage;
 		$errMsg .= "\n\ncodeStr = $codeStr\n";
 		$errMsg .= "\ninvXML = " . $invXML;
-		SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 		if (preg_match ( '/Timeout expired/', $eMessage ) || preg_match ( '/SQL Server does not exist or access denied/', $eMessage ) || preg_match ( '/deadlock victim/', $eMessage )) {
+			$sqlParts = explode ( ' ', $sql );
+			SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, 'DART : DeliveryComplete Retry : ' . $sqlParts [0] );
 			if ($sqlAttemptCount < DART_SQL_TIMEOUT_MAX_TRIES) {
 				$sqlAttemptCount ++;
 				$sqlFailed = true;
@@ -324,6 +349,7 @@ while ( $sqlFailed ) {
 				exit ();
 			}
 		} else {
+			SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, 'DART : DeliveryComplete Serious' );
 			dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
 			$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
 			echo $badXML;
@@ -361,143 +387,214 @@ if ($resultDeliveryFail === false) {
 
 // Submit any new invoices
 if (count ( $jd->new_invoice_ship_today_list ) > 0) {
-	try {
-		$dbh = new PDO ( 'spdb', '', '' );
-		$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-		
-		// Get an invoice number
-		$saleID = 0;
-		$sql = "uspWebOOGetInvoiceNumber " . $jd->deliveryjson->delivery->locationid . ", '" . date ( 'n/j/Y' ) . "'";
-		$stmt = $dbh->query ( $sql );
-		foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
-			$saleID = $row ['iSaleID'];
-		}
-		$stmt->closeCursor ();
-		
-		// Add the item to tblSaleDetail
-		$prodID = 0;
-		$unitID = 0;
-		$quantity = 0;
-		$price = 0.0;
-		$parentSDID = 0;
-		$stmt = $dbh->prepare ( "INSERT INTO tblSaleDetail
+	$sqlFailed = true;
+	$sqlAttemptCount = 1;
+	$sql = '';
+	while ( $sqlFailed ) {
+		$sqlFailed = false;
+		try {
+			$dbh = new PDO ( 'spdb', '', '' );
+			$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
+			
+			// Get an invoice number
+			$saleID = 0;
+			$sql = "uspWebOOGetInvoiceNumber " . $jd->deliveryjson->delivery->locationid . ", '" . date ( 'n/j/Y' ) . "'";
+			$stmt = $dbh->query ( $sql );
+			foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
+				$saleID = $row ['iSaleID'];
+			}
+			$stmt->closeCursor ();
+			
+			// Add the item to tblSaleDetail
+			$prodID = 0;
+			$unitID = 0;
+			$quantity = 0;
+			$price = 0.0;
+			$parentSDID = 0;
+			$poParentSDID = 0;
+			$stmt = $dbh->prepare ( "INSERT INTO tblSaleDetail
 							(iSaleID, iProductID, iUnitID, fOrderQuantity, fShipQuantity, mUnitPrice, iParentSDID)
 							VALUES
 							(:invoiceNum, :prodID, :unitID, :quantityOrd, :quantityShip, :price, :parentSDID)" );
-		$stmt->bindParam ( ':invoiceNum', $saleID );
-		$stmt->bindParam ( ':prodID', $prodID );
-		$stmt->bindParam ( ':unitID', $unitID );
-		$stmt->bindParam ( ':quantityOrd', $quantity );
-		$stmt->bindParam ( ':quantityShip', $quantity );
-		$stmt->bindParam ( ':price', $price );
-		$stmt->bindParam ( ':parentSDID', $parentSDID );
-		foreach ( $jd->new_invoice_ship_today_list as $item ) {
-			$prodID = $item->itemid;
-			$unitID = $item->unitid;
-			$quantity = round ( $item->shipquantity, 2 );
-			$price = sprintf ( '%0.2f', $item->price );
-			if (isset ( $item->parentsdid ))
-				$parentSDID = $item->parentsdid;
-			else
-				$parentSDID = 0;
+			$stmt->bindParam ( ':invoiceNum', $saleID );
+			$stmt->bindParam ( ':prodID', $prodID );
+			$stmt->bindParam ( ':unitID', $unitID );
+			$stmt->bindParam ( ':quantityOrd', $quantity );
+			$stmt->bindParam ( ':quantityShip', $quantity );
+			$stmt->bindParam ( ':price', $price );
+			$stmt->bindParam ( ':parentSDID', $parentSDID );
+			foreach ( $jd->new_invoice_ship_today_list as $item ) {
+				$prodID = $item->itemid;
+				$unitID = $item->unitid;
+				$quantity = round ( $item->shipquantity, 2 );
+				$price = sprintf ( '%0.2f', $item->price );
+				if (isset ( $item->parentsdid )) {
+					$parentSDID = $item->parentsdid;
+					$poParentSDID = $item->parentsdid;
+				} else
+					$parentSDID = 0;
+				$stmt->execute ();
+			}
+			unset ( $stmt );
+			
+			// Make it live
+			$stmt = $dbh->prepare ( "UPDATE tblSale SET iLocationSourceID=1, sNotes='DART generated by the driver (" . $jd->userid . ")', iUserID=:userID WHERE iSaleID=:invoiceNum" );
+			$stmt->bindParam ( ':userID', $jd->userid );
+			$stmt->bindParam ( ':invoiceNum', $saleID );
 			$stmt->execute ();
-		}
-		unset ( $stmt );
-		
-		// Make it live
-		$stmt = $dbh->prepare ( "UPDATE tblSale SET iLocationSourceID=1, sNotes='DART generated by the driver (" . $jd->userid . ")', iUserID=:userID WHERE iSaleID=:invoiceNum" );
-		$stmt->bindParam ( ':userID', $jd->userid );
-		$stmt->bindParam ( ':invoiceNum', $saleID );
-		$stmt->execute ();
-		unset ( $stmt );
-		
-		// Alert the salesperson
-		try {
-			$sql = "uspEmailDARTGeneratedInvoice $saleID, 1, " . $jd->userid;
-			$alertResult = $dbh->exec ( $sql );
+			unset ( $stmt );
+			
+			// Get any PO values copied
+			if ($poParentSDID > 0) {
+				$stmt = $dbh->prepare ( "uspDARTGenerateInvoicePO :sdID, :invoiceNum" );
+				$stmt->bindParam ( ':sdID', $poParentSDID );
+				$stmt->bindParam ( ':invoiceNum', $saleID );
+				$stmt->execute ();
+				unset ( $stmt );
+			}
+			
+			// Alert the salesperson
+			try {
+				$sql = "uspEmailDARTGeneratedInvoice $saleID, 1, " . $jd->userid;
+				$alertResult = $dbh->exec ( $sql );
+			} catch ( PDOException $e ) {
+				// Do nothing
+			}
+			
+			$dbh = null;
 		} catch ( PDOException $e ) {
-			// Do nothing
+			$errMsg = "SQL = $sql\n";
+			$eMessage = $e->getMessage ();
+			$errMsg .= $e->getFile () . ' (' . $e->getLine () . ')' . " sqlAttemptCount=$sqlAttemptCount : " . $eMessage;
+			$errMsg .= "\n\ncodeStr = $codeStr\n";
+			$errMsg .= "\ninvXML = " . $invXML;
+			if (preg_match ( '/Timeout expired/', $eMessage ) || preg_match ( '/SQL Server does not exist or access denied/', $eMessage ) || preg_match ( '/deadlock victim/', $eMessage )) {
+				$sqlParts = explode ( ' ', $sql );
+				SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, 'DART : DeliveryComplete : New Invoice Retry : ' . $sqlParts [0] );
+				if ($sqlAttemptCount < DART_SQL_TIMEOUT_MAX_TRIES) {
+					$sqlAttemptCount ++;
+					$sqlFailed = true;
+					sleep ( DART_SQL_TIMEOUT_SLEEP );
+				} else {
+					$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database timeout, see ' . DART_ERROR_LOG . ' log', $badXML );
+					$badXML = preg_replace ( '/code="0"/', 'code="1"', $badXML );
+					echo $badXML;
+					exit ();
+				}
+			} else {
+				SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, 'DART : DeliveryComplete : New Invoice Serious' );
+				dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
+				$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
+				echo $badXML;
+				exit ();
+			}
 		}
-		
-		$dbh = null;
-	} catch ( PDOException $e ) {
-		$errMsg .= $e->getFile () . ' (' . $e->getLine () . ')' . $e->getMessage ();
-		SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
-		dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
-		$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
-		echo $badXML;
-		exit ();
 	}
 }
 
 if (count ( $jd->new_invoice_ship_tomorrow_list ) > 0) {
-	try {
-		$dbh = new PDO ( 'spdb', '', '' );
-		$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-		
-		// Get an invoice number
-		$saleID = 0;
-		$sql = "uspWebOOGetInvoiceNumber " . $jd->deliveryjson->delivery->locationid . ", '" . date ( 'n/j/Y', strtotime ( "tomorrow" ) ) . "'";
-		$stmt = $dbh->query ( $sql );
-		foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
-			$saleID = $row ['iSaleID'];
-		}
-		$stmt->closeCursor ();
-		
-		// Add the item to tblSaleDetail
-		$prodID = 0;
-		$unitID = 0;
-		$quantity = 0;
-		$price = 0.0;
-		$parentSDID = 0;
-		$stmt = $dbh->prepare ( "INSERT INTO tblSaleDetail
+	$sqlFailed = true;
+	$sqlAttemptCount = 1;
+	$sql = '';
+	while ( $sqlFailed ) {
+		$sqlFailed = false;
+		try {
+			$dbh = new PDO ( 'spdb', '', '' );
+			$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
+			
+			// Get an invoice number
+			$saleID = 0;
+			$sql = "uspWebOOGetInvoiceNumber " . $jd->deliveryjson->delivery->locationid . ", '" . date ( 'n/j/Y', strtotime ( "tomorrow" ) ) . "'";
+			$stmt = $dbh->query ( $sql );
+			foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
+				$saleID = $row ['iSaleID'];
+			}
+			$stmt->closeCursor ();
+			
+			// Add the item to tblSaleDetail
+			$prodID = 0;
+			$unitID = 0;
+			$quantity = 0;
+			$price = 0.0;
+			$parentSDID = 0;
+			$poParentSDID = 0;
+			$stmt = $dbh->prepare ( "INSERT INTO tblSaleDetail
 							(iSaleID, iProductID, iUnitID, fOrderQuantity, fShipQuantity, mUnitPrice, iParentSDID)
 							VALUES
 							(:invoiceNum, :prodID, :unitID, :quantityOrd, :quantityShip, :price, :parentSDID)" );
-		$stmt->bindParam ( ':invoiceNum', $saleID );
-		$stmt->bindParam ( ':prodID', $prodID );
-		$stmt->bindParam ( ':unitID', $unitID );
-		$stmt->bindParam ( ':quantityOrd', $quantity );
-		$stmt->bindParam ( ':quantityShip', $quantity );
-		$stmt->bindParam ( ':price', $price );
-		$stmt->bindParam ( ':parentSDID', $parentSDID );
-		foreach ( $jd->new_invoice_ship_tomorrow_list as $item ) {
-			$prodID = $item->itemid;
-			$unitID = $item->unitid;
-			$quantity = round ( $item->shipquantity, 2 );
-			$price = sprintf ( '%0.2f', $item->price );
-			if (isset ( $item->parentsdid ))
-				$parentSDID = $item->parentsdid;
-			else
-				$parentSDID = 0;
+			$stmt->bindParam ( ':invoiceNum', $saleID );
+			$stmt->bindParam ( ':prodID', $prodID );
+			$stmt->bindParam ( ':unitID', $unitID );
+			$stmt->bindParam ( ':quantityOrd', $quantity );
+			$stmt->bindParam ( ':quantityShip', $quantity );
+			$stmt->bindParam ( ':price', $price );
+			$stmt->bindParam ( ':parentSDID', $parentSDID );
+			foreach ( $jd->new_invoice_ship_tomorrow_list as $item ) {
+				$prodID = $item->itemid;
+				$unitID = $item->unitid;
+				$quantity = round ( $item->shipquantity, 2 );
+				$price = sprintf ( '%0.2f', $item->price );
+				if (isset ( $item->parentsdid )) {
+					$parentSDID = $item->parentsdid;
+					$poParentSDID = $item->parentsdid;
+				} else
+					$parentSDID = 0;
+				$stmt->execute ();
+			}
+			unset ( $stmt );
+			
+			// Make it live
+			$stmt = $dbh->prepare ( "UPDATE tblSale SET iLocationSourceID=1, sNotes='DART generated by the driver (" . $jd->userid . ")', iUserID=:userID WHERE iSaleID=:invoiceNum" );
+			$stmt->bindParam ( ':userID', $jd->userid );
+			$stmt->bindParam ( ':invoiceNum', $saleID );
 			$stmt->execute ();
-		}
-		unset ( $stmt );
-		
-		// Make it live
-		$stmt = $dbh->prepare ( "UPDATE tblSale SET iLocationSourceID=1, sNotes='DART generated by the driver (" . $jd->userid . ")', iUserID=:userID WHERE iSaleID=:invoiceNum" );
-		$stmt->bindParam ( ':userID', $jd->userid );
-		$stmt->bindParam ( ':invoiceNum', $saleID );
-		$stmt->execute ();
-		unset ( $stmt );
-		
-		// Alert the salesperson
-		try {
-			$sql = "uspEmailDARTGeneratedInvoice $saleID, 2, " . $jd->userid;
-			$alertResult = $dbh->exec ( $sql );
+			unset ( $stmt );
+			
+			// Get any PO values copied
+			if ($poParentSDID > 0) {
+				$stmt = $dbh->prepare ( "uspDARTGenerateInvoicePO :sdID, :invoiceNum" );
+				$stmt->bindParam ( ':sdID', $poParentSDID );
+				$stmt->bindParam ( ':invoiceNum', $saleID );
+				$stmt->execute ();
+				unset ( $stmt );
+			}
+			
+			// Alert the salesperson
+			try {
+				$sql = "uspEmailDARTGeneratedInvoice $saleID, 2, " . $jd->userid;
+				$alertResult = $dbh->exec ( $sql );
+			} catch ( PDOException $e ) {
+				// Do nothing
+			}
+			
+			$dbh = null;
 		} catch ( PDOException $e ) {
-			// Do nothing
+			$errMsg = "SQL = $sql\n";
+			$eMessage = $e->getMessage ();
+			$errMsg .= $e->getFile () . ' (' . $e->getLine () . ')' . " sqlAttemptCount=$sqlAttemptCount : " . $eMessage;
+			$errMsg .= "\n\ncodeStr = $codeStr\n";
+			$errMsg .= "\ninvXML = " . $invXML;
+			if (preg_match ( '/Timeout expired/', $eMessage ) || preg_match ( '/SQL Server does not exist or access denied/', $eMessage ) || preg_match ( '/deadlock victim/', $eMessage )) {
+				$sqlParts = explode ( ' ', $sql );
+				SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, 'DART : DeliveryComplete : New Invoice Retry : ' . $sqlParts [0] );
+				if ($sqlAttemptCount < DART_SQL_TIMEOUT_MAX_TRIES) {
+					$sqlAttemptCount ++;
+					$sqlFailed = true;
+					sleep ( DART_SQL_TIMEOUT_SLEEP );
+				} else {
+					$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database timeout, see ' . DART_ERROR_LOG . ' log', $badXML );
+					$badXML = preg_replace ( '/code="0"/', 'code="1"', $badXML );
+					echo $badXML;
+					exit ();
+				}
+			} else {
+				SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, 'DART : DeliveryComplete : New Invoice Serious' );
+				dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
+				$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
+				echo $badXML;
+				exit ();
+			}
 		}
-		
-		$dbh = null;
-	} catch ( PDOException $e ) {
-		$eMessage = $e->getMessage ();
-		$errMsg .= $e->getFile () . ' (' . $e->getLine () . ')' . $eMessage;
-		SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
-		dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
-		$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
-		echo $badXML;
-		exit ();
 	}
 }
 

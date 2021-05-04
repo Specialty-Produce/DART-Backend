@@ -27,7 +27,7 @@ function sortLineItems($a, $b) {
 }
 
 /* XXX */
-// exit ();
+exit ();
 
 $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 if (preg_match ( '/adhoc/', $currentScript ))

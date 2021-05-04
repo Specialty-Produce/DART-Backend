@@ -3,8 +3,8 @@ include_once 'global_CDC.php';
 include 'dart_init.php';
 $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 
-$jsonDataPath = 'C:/Temp/Extract/JSONData';
-$processedPath = 'C:/Temp/Extract/Processed';
+$jsonDataPath = '/home/site/Temp/Extract/JSONData';
+$processedPath = '/home/site/Temp/Extract/Processed';
 
 // On various errors and failures, we'll use the status BAD update XML
 $badXML = <<< EOT
