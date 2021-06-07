@@ -23,7 +23,7 @@ define ( "DART_CT_DIR", "/home/site/Temp/invoiceCTs/" );
 define ( "DART_HULA_DIR", "C:/inetpub/filezillaroot/RestaurantMatrix/outgoing/" );
 // define ( "DART_BEVAGER_DIR", "C:/inetpub/filezillaroot/Bevager/" );
 // define ( "DART_QSR_DIR", "C:/inetpub/filezillaroot/QSROnline/" );
-define ( "DART_SIMPLE123_DIR", "C:/SFTP_Root/Invoice/" );
+define ( "DART_SIMPLE123_FTP_DIR", "simple123/Invoice/" );
 
 // Kludge to have users never get invoices
 define ( "DONT_SEND_INVOICE_EMAIL", "dontsendinvoices@specialtyproduce.com" );

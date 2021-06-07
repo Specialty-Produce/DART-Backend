@@ -30,5 +30,11 @@ PHP Version : <?php echo phpversion(); ?>
 }
 echo $versionInfo;
 ?></p>
+<?php
+$sigImageFile = '/home/site/dartsigs/darkstop.png';
+$sigData = file_get_contents($sigImageFile);
+$base64 = 'data:image/png;base64,' . base64_encode($sigData);
+?>
+<img src="<?php echo $base64 ?>" alt="Dark Stop" />
 </body>
 </html>

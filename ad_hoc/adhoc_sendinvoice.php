@@ -1,4 +1,5 @@
 <?php
+// exit ();
 require_once 'global_CDC.php';
 require_once '../dart_init.php';
 require_once 'classes_SP/class_LocationSP.php';
@@ -11,9 +12,14 @@ require_once 'classes_SP/class_InvoiceR365.php';
 require_once 'classes_SP/class_InvoiceBevager.php';
 require_once 'classes_SP/class_InvoiceCheftec.php';
 require_once 'classes_SP/class_InvoicePlateIQ.php';
+require_once 'classes_SP/class_InvoiceSP_Simple123.php';
+require_once 'classes_SP/class_InvoiceSP_QSROnline.php';
 require_once 'EDI_SP.php';
 require_once 'classes_SP/class_SP_FTP.php';
-require 'classes_SP/class_PHPMailerSP.php';
+require_once 'classes_SP/class_PHPMailerSP.php';
+require_once 'classes_SP/class_SRFaxSP.php';
+require_once 'classes_SP/class_AzureBlobSP.php';
+include_once 'classes_SP/class_AzureFileSP.php';
 function sortLineItems($a, $b) {
 	global $useCOG;
 	if ($useCOG) {
@@ -27,6 +33,7 @@ function sortLineItems($a, $b) {
 }
 
 /* XXX */
+echo "Done...";
 exit ();
 
 $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
@@ -44,48 +51,52 @@ $pdfMail = true;
 $pdfFax = true;
 $processEDIs = true;
 $rsiMail = true;
-$hulaMail = true;
+// Removed since no locations are using it, tblDartInvoiceSendHula, and need to reconfigure directories
+$hulaMail = false;
 $pppMail = true;
-$bevagerFTP = true;
+$bevagerFTP = false; // Not been used in 3 months - disable - AZURE update if this is getting turned back on!!!
 $r365FTP = true;
 $cheftecMail = true;
 $plateIQMail = true;
-
-/***/
-echo "Exiting...";
-exit();
+$simple123CSV = true;
+$qsronlineCSV = true;
 
 echo "<pre>\n";
 echo "*** Starting...\n\n";
 
 $resendArray = array (
-		
+
 );
 echo "count = " . count ( $resendArray ) . "\n";
 
+$resendCount = 0;
 foreach ( $resendArray as $resendSaleID ) {
-	
+	$resendCount ++;
 	if ($adhoc) {
 		$argv = array (
 				'adhoc_sendinvoice.php',
 				$resendSaleID 
 		);
+		echo "<pre>\n";
+		echo "Starting...\n\n";
+		echo "$resendCount : iSaleID = " . $argv [1] . "\n";
+		error_log ( "$currentScript : $resendCount : saleID = " . $argv [1] );
 		
-		$debug = false;
+		// Set what part needs to be resent
 		$pdfMail = false;
 		$pdfFax = false;
-		$processEDIs = false;
+		$processEDIs = true;
 		$rsiMail = false;
+		// Removed since no locations are using it, tblDartInvoiceSendHula, and need to reconfigure directories
 		$hulaMail = false;
 		$pppMail = false;
+		$bevagerFTP = false; // Not been used in 3 months - disable - AZURE update if this is getting turned back on!!!
+		$r365FTP = false;
 		$cheftecMail = false;
 		$plateIQMail = false;
-		$bevagerFTP = false;
-		$r365FTP = true;
-		
-		echo "\nSending $resendSaleID...\n";
+		$simple123CSV = false;
+		$qsronlineCSV = false;
 	}
-	
 	$useCOG = false;
 	
 	// Get the information on the location associated with these invoices
@@ -100,211 +111,253 @@ foreach ( $resendArray as $resendSaleID ) {
 	$bevagerIDs = array ();
 	$cheftecEmails = array ();
 	$plateIQEmail = '';
+	$simple123IDs = array ();
+	$qsronlineIDs = array ();
 	$pppEmails = array ();
-	try {
-		$dbh = new PDO ( 'spdb', '', '' );
-		// set the error reporting attribute.
-		$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-		
-		// The XML to get the invoice info
-		$invXML = "<ROOT>\n";
-		for($i = 1; $i < count ( $argv ); $i ++)
-			$invXML .= '<Rec rID="' . $argv [$i] . '"/>' . "\n";
-		$invXML .= "</ROOT>\n";
-		if ($adhoc) {
-			echo "\$invXML = " . htmlentities ( $invXML ) . "\n";
-		}
-		// Get the info
-		$stmt = $dbh->query ( "uspDARTSendInvoiceInfo '" . $invXML . "'" );
-		foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
-			$shipDate = date ( 'n/j/Y', strtotime ( $row ['dtShip'] ) );
-			$deliveryDate = date ( 'n/j/Y g:i:s A', strtotime ( $row ['dtDartDelivered'] ) );
-			$isDarkStop = ($row ['iSigner'] == DARK_STOP_ID) ? true : false;
-			// Determine if this is an offline PO for an EDI
-			$ediID = trim ( $row ['sInterchangeID'] );
-			$parentFTP = ($row ['sParentFTPFolder'] == null) ? '' : trim ( $row ['sParentFTPFolder'] );
-			$POnumber = trim ( $row ['sPO'] );
-			if (strlen ( $ediID ) > 0 && strlen ( $POnumber ) == 0) {
-				$requireEDIPO = constant ( 'EDISPConsts::' . $ediID . "_REQUIREPO" );
-				if ($requireEDIPO != null) {
-					$POnumber = 'SP-' . date ( 'ymdHi' ) . '-' . sprintf ( "%02d", $offLinePOcount );
-					$offLinePOs [$row ['iSaleID']] = $POnumber;
-					$offLinePOcount ++;
-				}
+	$sqlFailed = true;
+	$sqlAttemptCount = 1;
+	$invXML = '';
+	$sql = '';
+	while ( $sqlFailed ) {
+		$sqlFailed = false;
+		try {
+			$dbh = new PDO ( 'spdb', '', '' );
+			// set the error reporting attribute.
+			$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
+			
+			// The XML to get the invoice info
+			$invXML = "<ROOT>\n";
+			for($i = 1; $i < count ( $argv ); $i ++)
+				$invXML .= '<Rec rID="' . $argv [$i] . '"/>' . "\n";
+			$invXML .= "</ROOT>\n";
+			if ($adhoc) {
+				echo "\$invXML = " . htmlentities ( $invXML ) . "\n";
 			}
-			$showProdID = ($row ['iShowProductID'] == - 1) ? true : false;
-			$add2 = ($row ['sAddress2'] == null) ? '' : "\n" . trim($row ['sAddress2']);
-			$locInfo [$row ['iSaleID']] = array (
-					'id' => $row ['iLocationDestinationID'],
-					'saleID' => $row ['iSaleID'],
-					'name' => $row ['sDescription'],
-					'address' => $row ['sAddress1'] . $add2,
-					'city' => $row ['sCity'],
-					'state' => $row ['sState'],
-					'zip' => $row ['sPostalCode'],
-					'phone' => $row ['sPhone'],
-					'salesperson' => $row ['txtSalesPerson'],
-					'salesphone' => $row ['txtCellPhone'],
-					'salesemail' => $row ['txtSalesEmail'],
-					'terms' => $row ['sTerms'],
-					'po' => $POnumber,
-					'darkstop' => $isDarkStop,
-					'signer' => $row ['txtSigner'],
-					'shipdate' => $shipDate,
-					'deldate' => $deliveryDate,
-					'greenYTD' => $row ['mYTD'],
-					'ediID' => $ediID,
-					'parentFTP' => $parentFTP,
-					'showProdID' => $showProdID 
-			);
-		}
-		$stmt->closeCursor ();
-		
-		echo "Location ID = " . $locInfo [$argv [1]] ['id'] . "\n\n";
-		
-		// Get the emails
-		$stmt = $dbh->query ( "SELECT sEmail, sDescription FROM tblDartInvoiceSendEmails WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
-		foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row )
-			$sendEmails [] = array (
-					'name' => $row ['sDescription'],
-					'email' => $row ['sEmail'] 
-			);
-		$stmt->closeCursor ();
-		if ($adhoc) {
-			if ($debug) {
-				$sendEmails = array ();
-				if ($pdfMail)
+			// Get the info
+			$stmt = $dbh->query ( "uspDARTSendInvoiceInfo '" . $invXML . "'" );
+			foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
+				$shipDate = date ( 'n/j/Y', strtotime ( $row ['dtShip'] ) );
+				$deliveryDate = date ( 'n/j/Y g:i:s A', strtotime ( $row ['dtDartDelivered'] ) );
+				$isDarkStop = ($row ['iSigner'] == DARK_STOP_ID) ? true : false;
+				// Determine if this is an offline PO for an EDI
+				$ediID = trim ( $row ['sInterchangeID'] );
+				$parentFTP = ($row ['sParentFTPFolder'] == null) ? '' : trim ( $row ['sParentFTPFolder'] );
+				$POnumber = trim ( $row ['sPO'] );
+				if (strlen ( $ediID ) > 0 && strlen ( $POnumber ) == 0) {
+					$requireEDIPO = constant ( 'EDISPConsts::' . $ediID . "_REQUIREPO" );
+					if ($requireEDIPO != null) {
+						$POnumber = 'SP-' . date ( 'ymdHi' ) . '-' . sprintf ( "%02d", $offLinePOcount );
+						$offLinePOs [$row ['iSaleID']] = $POnumber;
+						$offLinePOcount ++;
+					}
+				}
+				$showProdID = ($row ['iShowProductID'] == - 1) ? true : false;
+				$add2 = ($row ['sAddress2'] == null) ? '' : "\n" . trim ( $row ['sAddress2'] );
+				$locInfo [$row ['iSaleID']] = array (
+						'id' => $row ['iLocationDestinationID'],
+						'saleID' => $row ['iSaleID'],
+						'name' => $row ['sDescription'],
+						'address' => $row ['sAddress1'] . $add2,
+						'city' => $row ['sCity'],
+						'state' => $row ['sState'],
+						'zip' => $row ['sPostalCode'],
+						'phone' => $row ['sPhone'],
+						'salesperson' => $row ['txtSalesPerson'],
+						'salesphone' => $row ['txtCellPhone'],
+						'salesemail' => $row ['txtSalesEmail'],
+						'terms' => $row ['sTerms'],
+						'po' => $POnumber,
+						'darkstop' => $isDarkStop,
+						'signer' => $row ['txtSigner'],
+						'shipdate' => $shipDate,
+						'deldate' => $deliveryDate,
+						'greenYTD' => $row ['mYTD'],
+						'ediID' => $ediID,
+						'parentFTP' => $parentFTP,
+						'showProdID' => $showProdID 
+				);
+			}
+			$stmt->closeCursor ();
+			
+			// Get the emails
+			$sql = "SELECT sEmail, sDescription FROM tblDartInvoiceSendEmails WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] . " and sEmail <> 'dontsendinvoices@specialtyproduce.com'";
+			$stmt = $dbh->query ( $sql );
+			foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row )
+				$sendEmails [] = array (
+						'name' => $row ['sDescription'],
+						'email' => $row ['sEmail'] 
+				);
+			$stmt->closeCursor ();
+			if ($adhoc) {
+				if ($debug) {
+					$sendEmails = array ();
+					if ($pdfMail)
+						$sendEmails [] = array (
+								'name' => $debugName,
+								'email' => $debugMail 
+						);
+				}
+			} else {
+				if ($debug)
 					$sendEmails [] = array (
 							'name' => $debugName,
 							'email' => $debugMail 
 					);
 			}
-		} else {
-			if ($debug)
-				$sendEmails [] = array (
-						'name' => $debugName,
-						'email' => $debugMail 
+			
+			// Get the faxes
+			$stmt = $dbh->query ( "SELECT sFax, sDescription FROM tblDartInvoiceSendFaxes WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+			foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row )
+				$sendFaxes [] = array (
+						'name' => $row ['sDescription'],
+						'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $row ['sFax'] ),
+						'faxSilent' => preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '$1-$2-$3', $row ['sFax'] ) 
 				);
-		}
-		
-		// Get the faxes
-		$stmt = $dbh->query ( "SELECT sFax, sDescription FROM tblDartInvoiceSendFaxes WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
-		foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row )
-			$sendFaxes [] = array (
-					'name' => $row ['sDescription'],
-					'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $row ['sFax'] ),
-					'faxSilent' => preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '$1-$2-$3', $row ['sFax'] ) 
-			);
-		$stmt->closeCursor ();
-		if ($adhoc) {
-			if ($debug) {
-				$sendFaxes = array ();
-				if ($pdfFax)
+			$stmt->closeCursor ();
+			if ($adhoc) {
+				if ($debug) {
+					$sendFaxes = array ();
+					if ($pdfFax)
+						$sendFaxes [] = array (
+								'name' => $debugName,
+								'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $debugFax ) 
+						);
+				}
+			} else {
+				if ($debug && strlen ( $debugFax ) == 10)
 					$sendFaxes [] = array (
 							'name' => $debugName,
 							'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $debugFax ) 
 					);
 			}
-		} else {
-			if ($debug && strlen ( $debugFax ) == 10)
-				$sendFaxes [] = array (
-						'name' => $debugName,
-						'fax' => $faxNumber = preg_replace ( '/^\+?1?[^0-9]*\(?(\d{3})[^0-9]*(\d{3})[^0-9]*(\d{4})/', '+1 ($1) $2-$3', $debugFax ) 
-				);
-		}
-		
-		// RSI ID
-		$stmt = $dbh->query ( "SELECT iRSIID FROM tblDartInvoiceSendRSI WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
-		$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-		$rsiID = ($result ['iRSIID'] > 0) ? $result ['iRSIID'] : 0;
-		$stmt->closeCursor ();
-		if ($adhoc) {
-			if ($debug) {
-				$rsiID = 0;
+			
+			// RSI ID
+			$stmt = $dbh->query ( "SELECT iRSIID FROM tblDartInvoiceSendRSI WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+			$result = $stmt->fetch ( PDO::FETCH_ASSOC );
+			$rsiID = ($result ['iRSIID'] > 0) ? $result ['iRSIID'] : 0;
+			$stmt->closeCursor ();
+			if ($adhoc) {
+				if ($debug) {
+					$rsiID = 0;
+				}
+			}
+			
+			// Hula ID
+			$stmt = $dbh->query ( "SELECT iLocationID FROM tblDartInvoiceSendHula WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+			$result = $stmt->fetch ( PDO::FETCH_ASSOC );
+			$hulaID = ($result ['iLocationID'] > 0) ? $result ['iLocationID'] : 0;
+			$stmt->closeCursor ();
+			if ($adhoc) {
+				if ($debug) {
+					$hulaID = 0;
+				}
+			}
+			
+			// Profit Pro Plus
+			$stmt = $dbh->query ( "SELECT iLocationID, tEmails FROM tblDartInvoiceSendProfitProPlus WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+			$result = $stmt->fetch ( PDO::FETCH_ASSOC );
+			$pppEmails = ($result ['iLocationID'] > 0) ? explode ( ',', $result ['tEmails'] ) : array ();
+			$stmt->closeCursor ();
+			if ($adhoc) {
+				if ($debug) {
+					$pppEmails = array ();
+					if ($pppMail)
+						$pppEmails [] = array (
+								'name' => $debugName,
+								'email' => $debugMail 
+						);
+				}
+			}
+			
+			// Restaurant 365
+			$stmt = $dbh->query ( "SELECT sR365ID, sFTPUsername, sFTPPassword, sFTPFolder FROM tblDartInvoiceSendR365 WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+			$r365Data = $stmt->fetchAll ( PDO::FETCH_ASSOC );
+			$stmt->closeCursor ();
+			if ($adhoc) {
+				if ($debug) {
+					$r365Data = array ();
+				}
+			}
+			
+			// Bevager
+			$stmt = $dbh->query ( "SELECT iLocationID FROM tblDartInvoiceSendBevager WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+			$bevagerIDs = $stmt->fetchAll ( PDO::FETCH_ASSOC );
+			$stmt->closeCursor ();
+			if ($adhoc) {
+				if ($debug) {
+					$bevagerIDs = array ();
+				}
+			}
+			
+			// Cheftec
+			$stmt = $dbh->query ( "SELECT iLocationID, tEmails FROM tblDartInvoiceSendCheftec WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+			$result = $stmt->fetch ( PDO::FETCH_ASSOC );
+			$cheftecEmails = ($result ['iLocationID'] > 0) ? explode ( ',', $result ['tEmails'] ) : array ();
+			$stmt->closeCursor ();
+			if ($adhoc) {
+				if ($debug) {
+					$cheftecEmails = array ();
+					if ($cheftecMail)
+						$cheftecEmails [] = array (
+								'name' => $debugName,
+								'email' => $debugMail 
+						);
+				}
+			}
+			
+			// PlateIQ
+			$stmt = $dbh->query ( "SELECT iLocationID, sEmail FROM tblDartInvoiceSendPlateIQ WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+			$result = $stmt->fetch ( PDO::FETCH_ASSOC );
+			$plateIQEmailAddress = ($result ['iLocationID'] > 0) ? $result ['sEmail'] : '';
+			$stmt->closeCursor ();
+			if ($adhoc) {
+				if ($debug) {
+					$plateIQEmailAddress = '';
+					if ($plateIQMail)
+						$plateIQEmailAddress = $debugMail;
+				}
+			}
+			
+			// Simple123
+			$stmt = $dbh->query ( "SELECT iLocationID FROM tblDARTInvoiceSendSimple123 WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+			$simple123IDs = $stmt->fetchAll ( PDO::FETCH_ASSOC );
+			$stmt->closeCursor ();
+			if ($adhoc) {
+				if ($debug) {
+					$simple123IDs = array ();
+				}
+			}
+			
+			// QSROnline
+			$stmt = $dbh->query ( "SELECT iLocationID FROM tblDartInvoiceSendQSROnline WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+			$qsronlineIDs = $stmt->fetchAll ( PDO::FETCH_ASSOC );
+			$stmt->closeCursor ();
+			if ($adhoc) {
+				if ($debug) {
+					$qsronlineIDs = array ();
+				}
+			}
+			
+			$dbh = null;
+		} catch ( PDOException $e ) {
+			$eMessage = $e->getMessage ();
+			$errMsg = $e->getFile () . ' (' . $e->getLine () . ')' . " sqlAttemptCount=$sqlAttemptCount : " . $eMessage;
+			$errMsg .= "\n\nSQL = $sql";
+			$errMsg .= "\nargv = " . print_r ( $argv, true );
+			$errMsg .= "\ninvXML = " . htmlentities ( $invXML );
+			SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, 'sendinvoice.php DB' );
+			if (preg_match ( '/Timeout expired/', $eMessage ) || preg_match ( '/SQL Server does not exist or access denied/', $eMessage ) || preg_match ( '/deadlock victim/', $eMessage ) || preg_match ( '/Schema changed/', $eMessage )) {
+				if ($sqlAttemptCount < DART_SQL_TIMEOUT_MAX_TRIES) {
+					$sqlAttemptCount ++;
+					$sqlFailed = true;
+					sleep ( DART_SQL_TIMEOUT_SLEEP );
+				} else {
+					exit ();
+				}
+			} else {
+				exit ();
 			}
 		}
-		
-		// Hula ID
-		$stmt = $dbh->query ( "SELECT iLocationID FROM tblDartInvoiceSendHula WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
-		$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-		$hulaID = ($result ['iLocationID'] > 0) ? $result ['iLocationID'] : 0;
-		$stmt->closeCursor ();
-		if ($adhoc) {
-			if ($debug) {
-				$hulaID = 0;
-			}
-		}
-		
-		// Profit Pro Plus
-		$stmt = $dbh->query ( "SELECT iLocationID, tEmails FROM tblDartInvoiceSendProfitProPlus WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
-		$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-		$pppEmails = ($result ['iLocationID'] > 0) ? explode ( ',', $result ['tEmails'] ) : array ();
-		$stmt->closeCursor ();
-		if ($adhoc) {
-			if ($debug) {
-				$pppEmails = array ();
-				if ($pppMail)
-					$pppEmails [] = array (
-							'name' => $debugName,
-							'email' => $debugMail 
-					);
-			}
-		}
-		
-		// Restaurant 365
-		$stmt = $dbh->query ( "SELECT sR365ID, sFTPUsername, sFTPPassword, sFTPFolder FROM tblDartInvoiceSendR365 WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
-		$r365Data = $stmt->fetchAll ( PDO::FETCH_ASSOC );
-		$stmt->closeCursor ();
-		if ($adhoc) {
-			if ($debug) {
-				$r365Data = array ();
-			}
-		}
-		
-		// Bevager
-		$stmt = $dbh->query ( "SELECT iLocationID FROM tblDartInvoiceSendBevager WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
-		$bevagerIDs = $stmt->fetchAll ( PDO::FETCH_ASSOC );
-		$stmt->closeCursor ();
-		if ($adhoc) {
-			if ($debug) {
-				$bevagerIDs = array ();
-			}
-		}
-		
-		// Cheftec
-		$stmt = $dbh->query ( "SELECT iLocationID, tEmails FROM tblDartInvoiceSendCheftec WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
-		$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-		$cheftecEmails = ($result ['iLocationID'] > 0) ? explode ( ',', $result ['tEmails'] ) : array ();
-		$stmt->closeCursor ();
-		if ($adhoc) {
-			if ($debug) {
-				$cheftecEmails = array ();
-				if ($cheftecMail)
-					$cheftecEmails [] = array (
-							'name' => $debugName,
-							'email' => $debugMail 
-					);
-			}
-		}
-		
-		// PlateIQ
-		$stmt = $dbh->query ( "SELECT iLocationID, sEmail FROM tblDartInvoiceSendPlateIQ WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
-		$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-		$plateIQEmail = ($result ['iLocationID'] > 0) ? $result ['sEmail'] : '';
-		$stmt->closeCursor ();
-		if ($adhoc) {
-			if ($debug) {
-				$plateIQEmail = '';
-				if ($plateIQMail)
-					$plateIQEmail = $debugMail;
-			}
-		}
-		
-		$dbh = null;
-	} catch ( PDOException $e ) {
-		$errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $e->getMessage ();
-		SP_ErrorLogging ( $errorTxt, true, DART_ERROR_LOG );
-		exit ();
 	}
 	
 	// Get the COG Accounts information
@@ -324,86 +377,110 @@ foreach ( $resendArray as $resendSaleID ) {
 		for($i = 1; $i < count ( $argv ); $i ++) {
 			$invNum = $argv [$i];
 			
+			// Reset the COG totals
+			if ($useCOG)
+				foreach ( $cogLocation as &$cl ) {
+					$cl ['count'] = 0;
+					$cl ['total'] = 0;
+				}
+			
 			$lineItems = array ();
 			$invTotal = 0.0;
 			$trackInvoiceEdits = array ();
-			try {
-				$dbh = new PDO ( 'spdb', '', '' );
-				// set the error reporting attribute.
-				$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-				
-				// Get the line items of the invoice.
-				$sql = "uspWebXFInvoiceDetail " . $invNum;
-				$stmt = $dbh->query ( $sql );
-				foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
-					$itemTotal = preg_replace ( '/^\$/', '', $row ['Total'] );
-					$invTotal += $itemTotal;
-					if ($useCOG) {
-						$cogID = (array_key_exists ( $row ['iProductID'], $cogExceptionProduct )) ? $cogExceptionProduct [$row ['iProductID']] : $row ['iCOGMasterID'];
-						$cogAccount = ($cogMaster [$cogID] != null && $cogMaster [$cogID] != 0) ? $cogMaster [$cogID] : 0;
-						$cogLocation [$cogAccount] ['count'] += 1;
-						$cogLocation [$cogAccount] ['total'] += $itemTotal;
-					} else {
-						$cogAccount = '';
+			$sqlFailed = true;
+			$sqlAttemptCount = 1;
+			while ( $sqlFailed ) {
+				$sqlFailed = false;
+				try {
+					$dbh = new PDO ( 'spdb', '', '' );
+					// set the error reporting attribute.
+					$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
+					
+					// Get the line items of the invoice.
+					$sql = "uspWebXFInvoiceDetail " . $invNum;
+					$stmt = $dbh->query ( $sql );
+					foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
+						$itemTotal = preg_replace ( '/^\$/', '', $row ['Total'] );
+						$invTotal += $itemTotal;
+						if ($useCOG) {
+							$cogID = (array_key_exists ( $row ['iProductID'], $cogExceptionProduct )) ? $cogExceptionProduct [$row ['iProductID']] : $row ['iCOGMasterID'];
+							$cogAccount = ($cogMaster [$cogID] != null && $cogMaster [$cogID] != 0) ? $cogMaster [$cogID] : 0;
+							$cogLocation [$cogAccount] ['count'] += 1;
+							$cogLocation [$cogAccount] ['total'] += $itemTotal;
+						} else {
+							$cogAccount = '';
+						}
+						if ($row ['iProductID'] == 9997)
+							$lineItems [] = array (
+									'prodID' => 9997,
+									'unitID' => 'ea',
+									'description' => 'Green Discount ...',
+									'ordered' => 1,
+									'shipped' => 1,
+									'unitPrice' => sprintf ( "%0.2f", $itemTotal ),
+									'itemTotal' => $itemTotal,
+									'status' => '',
+									'cogAccount' => $cogAccount 
+							);
+						else
+							$lineItems [] = array (
+									'description' => $row ['Description'],
+									'ordered' => round ( $row ['fOrderQuantity'], 2 ),
+									'shipped' => round ( $row ['fShipQuantity'], 2 ),
+									'unitPrice' => sprintf ( "%0.2f", $row ['mUnitPrice'] ),
+									'itemTotal' => $itemTotal,
+									'status' => $row ['Status'],
+									'prodID' => $row ['iProductID'],
+									'cogAccount' => $cogAccount 
+							);
 					}
-					if ($row ['iProductID'] == 9997)
-						$lineItems [] = array (
-								'prodID' => 9997,
-								'unitID' => 'ea',
-								'description' => 'Green Discount ...',
-								'ordered' => 1,
-								'shipped' => 1,
-								'unitPrice' => sprintf ( "%0.2f", $itemTotal ),
-								'itemTotal' => $itemTotal,
-								'status' => '',
-								'cogAccount' => $cogAccount 
+					$stmt->closeCursor ();
+					
+					// Get the tracking info for initial entry
+					$sql = "uspWebXFInvoiceTrackingInfo " . $invNum;
+					$stmt = $dbh->query ( $sql );
+					foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
+						$ts = preg_replace ( '/^(.*) (\d+):(\d+):\d+:\d+(.)$/', '$1 $2:$3 $4M', $row ['TimePlace'] );
+						$trackInvoiceEntry = array (
+								'source' => $row ['OrderSource'],
+								'timeStamp' => date ( 'M j, Y g:i A', strtotime ( $ts ) ),
+								'driver' => $row ['Driver'],
+								'packer' => $row ['Packer'],
+								'orderTaker' => $row ['OrderedTaker'],
+								'ooUser' => $row ['UserNameOrdered'] 
 						);
-					else
-						$lineItems [] = array (
-								'description' => $row ['Description'],
-								'ordered' => round ( $row ['fOrderQuantity'], 2 ),
-								'shipped' => round ( $row ['fShipQuantity'], 2 ),
-								'unitPrice' => sprintf ( "%0.2f", $row ['mUnitPrice'] ),
-								'itemTotal' => $itemTotal,
-								'status' => $row ['Status'],
-								'prodID' => $row ['iProductID'],
-								'cogAccount' => $cogAccount 
+					}
+					$stmt->closeCursor ();
+					
+					// Get the tracking info for edits
+					$sql = "uspWebXFInvoiceTrackingEdits " . $invNum;
+					$stmt = $dbh->query ( $sql );
+					foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
+						$trackInvoiceEdits [] = array (
+								'modifiedBy' => $row ['ModifiedBy'],
+								'timeStamp' => $row ['TimeModified'] 
 						);
+					}
+					$stmt->closeCursor ();
+					
+					$dbh = null;
+				} catch ( PDOException $e ) {
+					$eMessage = $e->getMessage ();
+					$errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $e->getMessage ();
+					$errorTxt .= "\n\n\$sqlAttemptCount = $sqlAttemptCount";
+					SP_ErrorLogging ( $errorTxt, true, DART_ERROR_LOG );
+					if (preg_match ( '/Timeout expired/', $eMessage ) || preg_match ( '/SQL Server does not exist or access denied/', $eMessage ) || preg_match ( '/deadlock victim/', $eMessage ) || preg_match ( '/Schema changed/', $eMessage )) {
+						if ($sqlAttemptCount < DART_SQL_TIMEOUT_MAX_TRIES) {
+							$sqlAttemptCount ++;
+							$sqlFailed = true;
+							sleep ( DART_SQL_TIMEOUT_SLEEP );
+						} else {
+							exit ();
+						}
+					} else {
+						exit ();
+					}
 				}
-				$stmt->closeCursor ();
-				
-				// Get the tracking info for initial entry
-				$sql = "uspWebXFInvoiceTrackingInfo " . $invNum;
-				$stmt = $dbh->query ( $sql );
-				foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
-					$ts = preg_replace ( '/^(.*) (\d+):(\d+):\d+:\d+(.)$/', '$1 $2:$3 $4M', $row ['TimePlace'] );
-					$trackInvoiceEntry = array (
-							'source' => $row ['OrderSource'],
-							'timeStamp' => date ( 'M j, Y g:i A', strtotime ( $ts ) ),
-							'driver' => $row ['Driver'],
-							'packer' => $row ['Packer'],
-							'orderTaker' => $row ['OrderedTaker'],
-							'ooUser' => $row ['UserNameOrdered'] 
-					);
-				}
-				$stmt->closeCursor ();
-				
-				// Get the tracking info for edits
-				$sql = "uspWebXFInvoiceTrackingEdits " . $invNum;
-				$stmt = $dbh->query ( $sql );
-				foreach ( $stmt->fetchAll ( PDO::FETCH_ASSOC ) as $row ) {
-					$trackInvoiceEdits [] = array (
-							'modifiedBy' => $row ['ModifiedBy'],
-							'timeStamp' => $row ['TimeModified'] 
-					);
-				}
-				$stmt->closeCursor ();
-				
-				$dbh = null;
-			} catch ( PDOException $e ) {
-				$errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $e->getMessage ();
-				SP_ErrorLogging ( $errorTxt, true, DART_ERROR_LOG );
-				exit ();
 			}
 			
 			if ($useCOG)
@@ -437,6 +514,38 @@ foreach ( $resendArray as $resendSaleID ) {
 				$sigImage = DART_SIG_DIR . $locInfo [$invNum] ['id'] . '/' . $invNum . '.png';
 			}
 			$pdf->addSignatureImage ( $sigImage );
+			/**
+			 * Azure DART
+			 */
+			/*
+			 * $hasSignature = false;
+			 * if ($locInfo [$invNum] ['darkstop']) {
+			 * $sigImageFile = DART_SIG_DIR . 'darkstop.png';
+			 * $hasSignature = true;
+			 * } else {
+			 * $sigImageFile = DART_SIG_DIR . $locInfo [$invNum] ['id'] . '/' . $invNum . '.png';
+			 * $hasSignature = true;
+			 *
+			 * if (! file_exists ( $sigImageFile )) {
+			 * // Get the Azure signature file
+			 * $sigFileName = $invNum . ".png";
+			 * $sigImageFile = SPConsts::TempDir . $sigFileName;
+			 * try {
+			 * $azf = new AzureFileSP ( 'specprodshares' );
+			 * // Write it out
+			 * $azf->getFile ( AFSPConstants::AZURE_SPS_DARTSIG, $locInfo [$invNum] ['id'], $sigFileName, $sigImageFile );
+			 * $hasSignature = true;
+			 * } catch ( SP_Exception $e ) {
+			 * $eMessage = $e->getMessage ();
+			 * $errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $eMessage;
+			 * SP_ErrorLogging ( $errorTxt, true, DART_ERROR_LOG, "SPRemote : AZ File : $currentScript" );
+			 * $hasSignature = false;
+			 * }
+			 * }
+			 * }
+			 * if ($hasSignature)
+			 * $pdf->addSignatureImage ( $sigImageFile );
+			 */
 			// Add signer info
 			$pdf->addSigner ( $locInfo [$invNum] ['signer'], $locInfo [$invNum] ['deldate'] );
 			// Add COG info
@@ -495,6 +604,13 @@ foreach ( $resendArray as $resendSaleID ) {
 			$outFile = DART_PDF_DIR . $invNum . ".pdf";
 			$pdf->Output ( $outFile, 'F' );
 			$pdf = null;
+		/**
+		 * Azure DART
+		 */
+			/*
+			 * if (! $locInfo [$invNum] ['darkstop'] && $hasSignature)
+			 * unlink ( $sigImageFile );
+			 */
 		}
 	}
 	
@@ -591,78 +707,18 @@ EOT;
 			if ($adhoc)
 				echo "Sending PDFs via fax...\n";
 			$faxNumCount = 0;
+			$srFax = new SRFaxSP ( 'acct' );
 			foreach ( $sendFaxes as $faxInfo ) {
 				$faxNumCount ++;
 				foreach ( $locInfo as $invoice ) {
-					$aixXML = "<SILENTFAX_AIX>
-							
-							<AIX_ACTION>FAX</AIX_ACTION>
-							<REF_CODE>Invoice {$invoice['saleID']}</REF_CODE>
-							
-							<DOCUMENT>
-							<DOC_TYPE>PDF</DOC_TYPE>
-							<DOC_FILE>{$invoice['saleID']}_$faxNumCount.pdf</DOC_FILE>
-							</DOCUMENT>
-							
-							<FROM_EMAIL>ar@specialtyproduce.com</FROM_EMAIL>
-							
-							<TO_TELNO>{$faxInfo['faxSilent']}</TO_TELNO>
-							<TO_NAME>{$faxInfo['name']}</TO_NAME>
-							
-							</SILENTFAX_AIX>";
-					$invoicePDFFileName = DART_PDF_DIR . $invoice ['saleID'] . ".pdf";
-					$outputAIXFileName = DART_PDF_DIR . $invoice ['saleID'] . "_" . $faxNumCount . ".aix";
-					file_put_contents ( $outputAIXFileName, $aixXML );
-					$responseCopy = copy ( $invoicePDFFileName, SILENT_FAX_DIR . $invoice ['saleID'] . "_" . $faxNumCount . ".pdf" );
-					$responseCopy = copy ( $outputAIXFileName, SILENT_FAX_DIR . $invoice ['saleID'] . "_" . $faxNumCount . ".aix" );
+					$outName = $invoice ['saleID'] . ".pdf";
+					$outPath = DART_PDF_DIR . $invoice ['saleID'] . ".pdf";
+					$srFax->sendFax ( $invoice ['id'], 'Invoice', $faxInfo ['faxSilent'], $outName, $outPath );
 				}
 			}
-		} else {
-			if ($adhoc)
-				echo "Sending PDFs via fax...\n";
-			// Can't fax a pdf from within this program. Need to convert to tiff first.
-			// Source for the tiff conversion : http://phpdave.wordpress.com/tag/php-pdf-to-tiff/
-			if (count ( $sendFaxes ) > 0) {
-				$invXML = "<ROOT>\n";
-				foreach ( $locInfo as $invoice ) {
-					$invXML .= '<Rec rID="' . $invoice ['saleID'] . '"/>' . "\n";
-					// Convert PDF to TIFF
-					$inputPDFFileName = DART_PDF_DIR . $invoice ['saleID'] . ".pdf";
-					$outputTiffFileName = DART_PDF_DIR . $invoice ['saleID'] . ".tiff";
-					// ghost script command to run
-					$cmd = "C:\PROGRA~1\gs\gs9.21\bin\gswin64.exe -q -SDEVICE=tiffg4 -r600x600 -sPAPERSIZE=letter -sOutputFile=$outputTiffFileName -dNOPAUSE -dBATCH  $inputPDFFileName 2>&1";
-					$errStr = "Fax messages : ";
-					$response = shell_exec ( $cmd );
-					$errStr .= "shell_exec = ";
-					$errStr .= ($response == null) ? "null" : $response;
-					$responseCopy = copy ( $outputTiffFileName, DART_FAX_DIR . $invoice ['saleID'] . ".tiff" );
-					$errStr .= " : copy " . $invoice ['saleID'] . " = " . (($responseCopy) ? "true" : "false");
-					SP_ErrorLogging ( $errStr, false, "dart_fax" );
-					sleep ( 3 );
-					// unlink ( $outputTiffFileName );
-				}
-				$invXML .= "</ROOT>";
-				try {
-					$dbh = new PDO ( 'spdb', '', '' );
-					$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-					$sql = "uspDARTFaxListAdd '$invXML'";
-					// dartLogging ( $currentScript, " Dart Fax add, sql = " . $invXML );
-					$resultFaxAdded = $dbh->exec ( $sql );
-					
-					$dbh = null;
-				} catch ( PDOException $e ) {
-					$errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $e->getMessage ();
-					SP_ErrorLogging ( $errorTxt, true, DART_ERROR_LOG );
-					exit ();
-				}
-				
-				if ($resultFaxAdded === false) {
-					$errMsg = "uspDARTFaxListAdd $invXML returned FALSE";
-					SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
-					dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG );
-					exit ();
-				}
-			}
+			$srFax->writeQueueLogToDB ();
+			if (count ( $srFax->errorLog ) > 0)
+				SP_ErrorLogging ( "SR Fax Send Errors : $currentScript \n" . implode ( "\n", $srFax->errorLog ), true, '', "SR Fax Send Errors" );
 		}
 	} else {
 		if ($adhoc)
@@ -674,137 +730,150 @@ EOT;
 		if ($adhoc)
 			echo "Sending via EDI...\n";
 		$ftpConnector = new SP_FTP ();
-		foreach ( $locInfo as $loc ) {
-			if (strlen ( $loc ['ediID'] ) > 0) {
-				$saleID = $loc ['saleID'];
-				if (array_key_exists ( $saleID, $offLinePOs )) {
-					// Newly generated Offline PO
-					try {
-						$dbh = new PDO ( 'spdb', '', '' );
-						$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-						$stmt = $dbh->query ( "uspEDIOfflinePORegister " . $saleID . ", '" . $offLinePOs [$saleID] . "'" );
-						$opoEmails = $stmt->fetchAll ( PDO::FETCH_BOTH );
-						$dbh = null;
-					} catch ( PDOException $e ) {
-						$errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $e->getMessage ();
-						SP_ErrorLogging ( $errorTxt, true, DART_ERROR_LOG );
-						exit ();
-					}
-					if (count ( $opoEmails ) > 0) {
-						$fp = fopen ( $emailLogFile, "a" );
-						$subjectStr = "SP Offline PO : " . $offLinePOs [$saleID];
-						fwrite ( $fp, date ( '[d-M-Y H:i:s]' ) . " : " . $subjectStr . " -" );
-						
-						$mail->FromName = "Specialty Produce Accounting";
-						$mail->From = "ar@specialtyproduce.com";
-						$mail->Subject = $subjectStr;
-						$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
-						if ($debug)
-							$mail->AddBCC ( $debugMail, $debugName );
-						// Add the PDFs
-						$mail->AddAttachment ( DART_PDF_DIR . $saleID . ".pdf", "$saleID.pdf" );
-						// Add the body
-						$mail->Body = <<< EOT
+		try {
+			$azb = new AzureBlobSP ( 'specprodstorage', false );
+			foreach ( $locInfo as $loc ) {
+				if (strlen ( $loc ['ediID'] ) > 0) {
+					$saleID = $loc ['saleID'];
+					if (array_key_exists ( $saleID, $offLinePOs )) {
+						// Newly generated Offline PO
+						try {
+							$dbh = new PDO ( 'spdb', '', '' );
+							$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
+							$stmt = $dbh->query ( "uspEDIOfflinePORegister " . $saleID . ", '" . $offLinePOs [$saleID] . "'" );
+							$opoEmails = $stmt->fetchAll ( PDO::FETCH_BOTH );
+							$dbh = null;
+						} catch ( PDOException $e ) {
+							$errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $e->getMessage ();
+							SP_ErrorLogging ( $errorTxt, true, DART_ERROR_LOG );
+							exit ();
+						}
+						if (count ( $opoEmails ) > 0) {
+							$fp = fopen ( $emailLogFile, "a" );
+							$subjectStr = "SP Offline PO : " . $offLinePOs [$saleID];
+							fwrite ( $fp, date ( '[d-M-Y H:i:s]' ) . " : " . $subjectStr . " -" );
+							
+							$mail->FromName = "Specialty Produce Accounting";
+							$mail->From = "ar@specialtyproduce.com";
+							$mail->Subject = $subjectStr;
+							$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
+							if ($debug)
+								$mail->AddBCC ( $debugMail, $debugName );
+							// Add the PDFs
+							$mail->AddAttachment ( DART_PDF_DIR . $saleID . ".pdf", "$saleID.pdf" );
+							// Add the body
+							$mail->Body = <<< EOT
 Dear Customer,
-											
+												
 The attached invoice did not have a PO number.
 Since you use a buying group that requires us to transfer POs and invoices with them electronically, we have generated an offline PO number for this invoice.
-											
+												
 Please make sure you take the appropriate steps in your buying group's online system to accept this PO:
 
 EOT;
-						$mail->Body .= "\tInvoice # " . $saleID . ", PO # " . $offLinePOs [$saleID] . "\n";
-						$mail->Body .= <<< EOT
-									
+							$mail->Body .= "\tInvoice # " . $saleID . ", PO # " . $offLinePOs [$saleID] . "\n";
+							$mail->Body .= <<< EOT
+										
 We appreciate your business.
-											
+												
 Sincerely,
 Specialty Produce
 
 EOT;
-						$sendCount = 0;
-						foreach ( $opoEmails as $entry ) {
-							fwrite ( $fp, " " . $entry ['txtEmail'] );
-							$mail->AddAddress ( $entry ['txtEmail'], $entry ['txtName'] );
-							if ($mail->Send ()) {
-								$sendCount ++;
+							$sendCount = 0;
+							foreach ( $opoEmails as $entry ) {
+								fwrite ( $fp, " " . $entry ['txtEmail'] );
+								$mail->AddAddress ( $entry ['txtEmail'], $entry ['txtName'] );
+								if ($mail->Send ()) {
+									$sendCount ++;
+								}
+								$mail->ClearAddresses ();
 							}
-							$mail->ClearAddresses ();
+							$mail->ClearAttachments ();
+							$mail->ClearBCCs ();
+							fwrite ( $fp, "(" . $sendCount . ")\n" );
+							fclose ( $fp );
 						}
-						$mail->ClearAttachments ();
-						$mail->ClearBCCs ();
-						fwrite ( $fp, "(" . $sendCount . ")\n" );
-						fclose ( $fp );
 					}
-				}
-				// Send the PO
-				include_once 'EDI_SP\Receivers\\' . $loc ['ediID'] . '\ts810.php';
-				$tsFunction = $loc ['ediID'] . '_810';
-				list ( $success, $msg ) = $tsFunction ( $loc ['saleID'] );
-				if (! $success) {
-					$errMsg = "$tsFunction returned false : $msg";
-					$errMsg .= "\nsaleID = " . $loc ['saleID'] . ", ediID = " . $loc ['ediID'];
-					SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
-					continue;
-				}
-				if (strlen ( $msg ) == 0) {
-					$errMsg = "$tsFunction returned empty EDI string";
-					$errMsg .= "\nsaleID = " . $loc ['saleID'] . ", ediID = " . $loc ['ediID'];
-					SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
-					continue;
-				}
-				$outFileName = 'O_SP_' . date ( 'ymd_His' ) . '.810';
-				$outPath = EDISPConsts::FTP_ROOT;
-				$outPath .= (strlen ( $loc ['parentFTP'] ) > 0) ? $loc ['parentFTP'] . '\\' : '';
-				$outPath .= $loc ['ediID'] . '\\outgoing\\';
-				$outFile = $outPath . $outFileName;
-				if (! file_put_contents ( $outFile, $msg )) {
-					$errMsg = "Error writing outgoing 810 : $outFile" . "\nfor invoice # " . $loc ['saleID'];
-					SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
-					continue;
-				}
-				// Set up the ftp connection, if needed
-				$sentSuccessfully = true;
-				if (constant ( 'EDISPConsts::' . $loc ['ediID'] . "_SENDFTP" )) {
-					$ftpConnector->server = constant ( 'EDISPConsts::' . $loc ['ediID'] . "_FTP" );
-					$ftpConnector->username = constant ( 'EDISPConsts::' . $loc ['ediID'] . "_USERNAME" );
-					$ftpConnector->password = constant ( 'EDISPConsts::' . $loc ['ediID'] . "_PASSWORD" );
-					try {
-						$ftpConnector->sendFile ( $outPath, $outFileName );
-					} catch ( SP_Exception $spe ) {
-						SP_ErrorLogging ( $spe, true, DART_ERROR_LOG, "DART Error : cURL send" );
-						$sentSuccessfully = false;
-					}
-					if ($sentSuccessfully) {
-						dartLogging ( $currentScript, "    Successfully FTP'd " . $outFile );
-					} else {
-						$errMsg = "File not sent successfully, moved to flagged folder on vDart:\n$outFile\nfor invoice # " . $loc ['saleID'];
-						SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, $currentScript . " - EDI error" );
-						flagFTPFile ( $loc ['ediID'], $outFile );
-					}
-				}
-				// Save the outgoing file to the EDI dir
-				if ($sentSuccessfully) {
-					$savePath = EDISPConsts::EDI_SAVE_DIR . $loc ['ediID'] . '\\outgoing\\' . $outFileName;
-					if (! copy ( $outFile, $savePath )) {
-						$errMsg = "Error saving $outFile to $savePath\nfor invoice # " . $loc ['saleID'];
+					// Send the PO
+					include_once 'EDI_SP\Receivers\\' . $loc ['ediID'] . '\ts810.php';
+					$tsFunction = $loc ['ediID'] . '_810';
+					list ( $success, $msg ) = $tsFunction ( $loc ['saleID'] );
+					if (! $success) {
+						$errMsg = "$tsFunction returned false : $msg";
+						$errMsg .= "\nsaleID = " . $loc ['saleID'] . ", ediID = " . $loc ['ediID'];
 						SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
 						continue;
 					}
-					if ($adhoc)
-						echo "Sent $outFileName for saleID = $saleID\n";
-					// Unlink the file if we sent it, otherwise it will sit waiting to be picked up and subsequently deleted.
+					if (strlen ( $msg ) == 0) {
+						$errMsg = "$tsFunction returned empty EDI string";
+						$errMsg .= "\nsaleID = " . $loc ['saleID'] . ", ediID = " . $loc ['ediID'];
+						SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
+						continue;
+					}
+					$outFileName = 'O_SP_' . date ( 'ymd_His' ) . '_' . $loc ['saleID'] . '.810';
+					$outPath = EDISPConsts::EDI_BACKUP;
+					$outPath .= (strlen ( $loc ['parentFTP'] ) > 0) ? $loc ['parentFTP'] . '/' : '';
+					$outPath .= $loc ['ediID'] . '/outgoing/';
+					$outFile = $outPath . $outFileName;
+					if (! file_put_contents ( $outFile, $msg )) {
+						$errMsg = "Error writing outgoing 810 : $outFile" . "\nfor invoice # " . $loc ['saleID'];
+						SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
+						continue;
+					}
+					// Write to Azure Blob
+					$azFTPDir = (strlen ( $loc ['parentFTP'] ) > 0) ? $loc ['parentFTP'] . '/' : '';
+					$azFTPDir .= $loc ['ediID'] . '/outgoing/';
+					$azb->putBlockBlobFile ( AzureBlobSP::AZURE_STORAGE_FTP_DIR, $azFTPDir, $outFileName, $outFile );
+					// Set up the ftp connection, if needed
+					$sentSuccessfully = true;
 					if (constant ( 'EDISPConsts::' . $loc ['ediID'] . "_SENDFTP" )) {
-						if (! unlink ( $outFile )) {
-							$errMsg = "Error unlinking $outFile\nfor invoice # " . $loc ['saleID'];
-							SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
-							continue;
+						$ftpConnector->server = constant ( 'EDISPConsts::' . $loc ['ediID'] . "_FTP" );
+						$ftpConnector->username = constant ( 'EDISPConsts::' . $loc ['ediID'] . "_USERNAME" );
+						$ftpConnector->password = constant ( 'EDISPConsts::' . $loc ['ediID'] . "_PASSWORD" );
+						try {
+							$ftpConnector->sendFile ( $outPath, $outFileName );
+						} catch ( SP_Exception $spe ) {
+							SP_ErrorLogging ( $spe, true, DART_ERROR_LOG, "DART Error : cURL send" );
+							$sentSuccessfully = false;
+						}
+						if ($sentSuccessfully) {
+							dartLogging ( $currentScript, "    Successfully FTP'd " . $outFile );
+						} else {
+							$errMsg = "File not sent successfully, moved to flagged folder on vDart:\n$outFile\nfor invoice # " . $loc ['saleID'];
+							SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, $currentScript . " - EDI error" );
+							// flagFTPFile ( $loc ['ediID'], $outFile );
 						}
 					}
+					// Save the outgoing file to the EDI dir
+					// Don't have to do this after Azure move since we're saving the files at the start.
+					/*
+					 * if ($sentSuccessfully) {
+					 * $savePath = EDISPConsts::EDI_SAVE_DIR . $loc ['ediID'] . '\\outgoing\\' . $outFileName;
+					 * if (! copy ( $outFile, $savePath )) {
+					 * $errMsg = "Error saving $outFile to $savePath\nfor invoice # " . $loc ['saleID'];
+					 * SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
+					 * continue;
+					 * }
+					 * if ($adhoc)
+					 * echo "Sent $outFileName for saleID = $saleID\n";
+					 * // Unlink the file if we sent it, otherwise it will sit waiting to be picked up and subsequently deleted.
+					 * if (constant ( 'EDISPConsts::' . $loc ['ediID'] . "_SENDFTP" )) {
+					 * if (! unlink ( $outFile )) {
+					 * $errMsg = "Error unlinking $outFile\nfor invoice # " . $loc ['saleID'];
+					 * SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
+					 * continue;
+					 * }
+					 * }
+					 * }
+					 */
 				}
+				// Need to sleep 2 seconds so we don't overwrite a file
+				sleep ( 2 );
 			}
-			// Need to sleep 2 seconds so we don't overwrite a file
-			sleep ( 2 );
+		} catch ( SP_Exception $e ) {
+			$errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $e->getMessage ();
+			SP_ErrorLogging ( $errorTxt, true, DART_ERROR_LOG );
 		}
 		$mail->ClearAllRecipients ();
 	} else {
@@ -862,6 +931,7 @@ EOT;
 	}
 	
 	// Process Hula Invoices
+	// Disabled, see $hulaMail above
 	if ($hulaMail) {
 		if ($adhoc)
 			echo "Sending via HULA...\n";
@@ -949,10 +1019,12 @@ EOT;
 		if ($adhoc)
 			echo "Sending via FTP to R365...\n";
 		if (count ( $r365Data ) > 0) {
+			$r365InvoiceList = array ();
 			$invR365 = new InvoiceR365 ( $r365Data [0] );
 			foreach ( $locInfo as $loc ) {
 				// Retrieve and add to CSV each invoice
 				$invR365->retrieveInvoice ( $loc ['saleID'] );
+				$r365InvoiceList [] = $loc ['saleID'];
 				$invR365->generateCSVLineItems ();
 				$invR365->detail = array ();
 			}
@@ -961,10 +1033,10 @@ EOT;
 			} catch ( SP_Exception $spe ) {
 				$errMsg = "R365 : FTP CSV error : " . $spe->getMessage ();
 				SP_errorLogging ( $errMsg, true, '', $currentScript . " - R365 error" );
+				dartLogging ( $currentScript, "    R365 FTP Failed : " . implode ( ',', $r365InvoiceList ) );
 				continue;
 			}
-			if ($adhoc)
-				echo "SENT via FTP to R365...\n";
+			dartLogging ( $currentScript, "    R365 FTP Sent : " . implode ( ',', $r365InvoiceList ) );
 		}
 	} else {
 		if ($adhoc)
@@ -976,6 +1048,7 @@ EOT;
 		if ($adhoc)
 			echo "Sending via FTP to Bevager...\n";
 		if (count ( $bevagerIDs ) > 0) {
+			$azb = new AzureBlobSP ( 'specprodstorage', false );
 			foreach ( $locInfo as $loc ) {
 				try {
 					$bevFilename = $loc ['id'] . '_' . $loc ['saleID'] . '.csv';
@@ -983,12 +1056,13 @@ EOT;
 					$bevString = $invBev->getBevHeader ();
 					$invBev->retrieveInvoice ( $loc ['saleID'] );
 					$bevString .= $invBev->generateBevOutput ();
-					$bevagerFile = DART_BEVAGER_DIR . $bevFilename;
-					$bevagerFH = fopen ( $bevagerFile, "w" );
-					fwrite ( $bevagerFH, $bevString );
-					fclose ( $bevagerFH );
-					// $errMsg = "Bevager : $bevFilename : " . $bevString;
-					// SP_errorLogging ( $errMsg, true, '', $currentScript . " - Bevager Data" );
+					$bevFile = SPConsts::TempDir . $bevFilename;
+					file_put_contents ( $bevFile, $bevString );
+					$ftpDir = $invBev::FILEMAGE_FTP_DIR . $invBev::FTP_INVOICES;
+					$azb->putBlockBlobFile ( AzureBlobSP::AZURE_STORAGE_FTP_DIR, $ftpDir, $bevFilename, $bevFile );
+					sleep ( 3 );
+					SP_ErrorLogging ( "Bevager file created : $ftpDir : $bevFilename", true, '', "Bevager EDI : $bevFilename" );
+					unlink ( $bevFile );
 				} catch ( SP_Exception $spe ) {
 					$errMsg = "Bevager : Retrieve invoice error : " . $spe->getMessage ();
 					SP_errorLogging ( $errMsg, true, '', $currentScript . " - Bevager error" );
@@ -1049,7 +1123,7 @@ EOT;
 			foreach ( $locInfo as $loc ) {
 				$cheftecFileName = $loc ['saleID'] . '.csv';
 				$cheftecFile = DART_CT_DIR . $cheftecFileName;
-				// unlink ( $cheftecFile );
+				unlink ( $cheftecFile );
 			}
 		}
 		$mail->ClearAllRecipients ();
@@ -1063,58 +1137,205 @@ EOT;
 	if ($plateIQMail) {
 		if ($adhoc)
 			echo "Sending via PlateIQ...\n";
-		if (strlen ( $plateIQEmail ) > 0) {
-			$plateIQFilename = $loc ['saleID'] . '.csv';
-			$plateIQFile = DART_PLATEIQ_DIR . $plateIQFilename;
-			$plateIQFH = fopen ( $plateIQFile, "w" );
-			$invPlateIQ = new InvoicePlateIQ ();
-			$piqString = $invPlateIQ->getPIQHeader ();
+		if (strtoupper ( $plateIQEmailAddress ) == 'FTP') {
+			try {
+				$azb = new AzureBlobSP ( 'specprodstorage', false );
+				$invPlateIQ = new InvoicePlateIQ ();
+				foreach ( $locInfo as $loc ) {
+					try {
+						$piqString = $invPlateIQ->getPIQHeader ();
+						$invPlateIQ->retrieveInvoice ( $loc ['saleID'] );
+						$piqString .= $invPlateIQ->generatePIQOutput ();
+						$piqFilename = $loc ['id'] . '_' . $loc ['saleID'] . '_' . date ( 'ymd_His' ) . '.csv';
+						$piqFile = $invPlateIQ::FTP_DIR . $piqFilename;
+						$piqFH = fopen ( $piqFile, "w" );
+						fwrite ( $piqFH, $piqString );
+						fclose ( $piqFH );
+						$azb->putBlockBlobFile ( AzureBlobSP::AZURE_STORAGE_FTP_DIR, $invPlateIQ::FILEMAGE_FTP_DIR, $piqFilename, $piqFile );
+					} catch ( SP_Exception $spe ) {
+						$errMsg = "PlateIQ : invoice error : " . $spe->getMessage ();
+						SP_errorLogging ( $errMsg, true, '', $currentScript . " - PlateIQ error" );
+						continue;
+					}
+				}
+			} catch ( Exception $e ) {
+				SP_ErrorLogging ( "PlateIQ Error : " . $e->getMessage (), true, '', 'DART Plate IQ Error' );
+			}
+		} else {
+			if (strlen ( $plateIQEmailAddress ) > 0) {
+				$plateIQFilename = $loc ['saleID'] . '.csv';
+				$plateIQFile = DART_PLATEIQ_DIR . $plateIQFilename;
+				$plateIQFH = fopen ( $plateIQFile, "w" );
+				$invPlateIQ = new InvoicePlateIQ ();
+				$piqString = $invPlateIQ->getPIQHeader ();
+				foreach ( $locInfo as $loc ) {
+					try {
+						$invPlateIQ->retrieveInvoice ( $loc ['saleID'] );
+						$piqString .= $invPlateIQ->generatePIQOutput ();
+					} catch ( SP_Exception $spe ) {
+						$errMsg = "RSI : Retrieve invoice error : " . $spe->getMessage ();
+						SP_errorLogging ( $errMsg, true, '', $currentScript . " - RSI error" );
+						continue;
+					}
+				}
+				fwrite ( $plateIQFH, $piqString );
+				fclose ( $plateIQFH );
+				$mail->FromName = "Specialty Produce Accounting";
+				$mail->From = "ar@specialtyproduce.com";
+				$mail->AddAddress ( $plateIQEmailAddress );
+				if ($debug)
+					$mail->AddBCC ( $debugMail, $debugName );
+				$mail->Subject = "Specialty Produce Imported Invoice";
+				$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
+				$mail->AddAttachment ( $plateIQFile, $plateIQFilename );
+				// Add the body
+				$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " . $locInfo [$argv [1]] ['name'] . "\n - Specialty Produce System";
+				// Send the email
+				if (! $mail->Send ()) {
+					$errMsg = "PlateIQ : Send mail error : " . $plateIQEmail;
+					SP_errorLogging ( $errMsg, true, '', $currentScript . " - RSI error" );
+				}
+				$mail->ClearAttachments ();
+				$mail->ClearAllRecipients ();
+				// SP_ErrorLogging ( "PlateIQ sent for $plateIQFilename : " . file_get_contents ( $plateIQFile ), true, "", "PlateIQ Alert" );
+				sleep ( 3 );
+				unlink ( $plateIQFile );
+			}
+			$mail->ClearAllRecipients ();
+		}
+	} else {
+		if ($adhoc)
+			echo "NOT sending via PlateIQ...\n";
+	}
+	
+	// Simple123
+	if ($simple123CSV) {
+		if ($adhoc)
+			echo "Emailing via Simple123...\n";
+		if (count ( $simple123IDs ) > 0) {
+			$s123Filename = $locInfo [$argv [1]] ['id'] . '-invoice-' . date ( 'ymd-His' ) . '.csv';
+			$s123File = SPConsts::TempDir . $s123Filename;
+			$s123FH = fopen ( $s123File, "w" );
+			$firstEntry = true;
+			$sIDsToEmail = array ();
 			foreach ( $locInfo as $loc ) {
 				try {
-					$invPlateIQ->retrieveInvoice ( $loc ['saleID'] );
-					$piqString .= $invPlateIQ->generatePIQOutput ();
+					$inv = new InvoiceSP_Simple123 ();
+					$inv->retrieveInvoice ( $loc ['saleID'] );
+					// Check for negative quantities
+					// if ($inv->containsNegativeQuantites ()) {
+					// $sIDsToEmail [] = $loc ['saleID'];
+					// continue;
+					// }
+					if ($firstEntry) {
+						fwrite ( $s123FH, $inv->getCSVHeader () . "\n" );
+						$firstEntry = false;
+					}
+					fwrite ( $s123FH, $inv->generateInvoiceCSV () );
 				} catch ( SP_Exception $spe ) {
-					$errMsg = "RSI : Retrieve invoice error : " . $spe->getMessage ();
-					SP_errorLogging ( $errMsg, true, '', $currentScript . " - RSI error" );
+					$errMsg = "Simple123 : Retrieve invoice error : " . $spe->getMessage ();
+					SP_errorLogging ( $errMsg, true, '', $currentScript . " - Simple123 error" );
 					continue;
 				}
 			}
-			fwrite ( $plateIQFH, $piqString );
-			fclose ( $plateIQFH );
-			// error_log("sendinvoice.php : PlateIQ : Start\n{$piqString}End");
-			$mail->FromName = "Specialty Produce Accounting";
-			$mail->From = "ar@specialtyproduce.com";
-			$mail->AddAddress ( $plateIQEmail );
-			if ($debug)
+			fclose ( $s123FH );
+			// Is there a CSV to email?
+			if ($firstEntry == false) {
+				$mail->FromName = "Specialty Produce Accounting";
+				$mail->From = "ar@specialtyproduce.com";
+				$mail->AddAddress ( InvoiceSP_Simple123::EMAIL_RECIPIENT_CSV );
+				if ($debug)
+					$mail->AddBCC ( $debugMail, $debugName );
 				$mail->AddBCC ( $debugMail, $debugName );
-			$mail->Subject = "Specialty Produce Imported Invoice";
-			$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
-			$mail->AddAttachment ( $plateIQFile, $plateIQFilename );
-			// Add the body
-			$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " . $locInfo [$argv [1]] ['name'] . "\n - Specialty Produce System";
-			// Send the email
-			if (! $mail->Send ()) {
-				$errMsg = "PlateIQ : Send mail error : " . $plateIQEmail;
-				SP_errorLogging ( $errMsg, true, '', $currentScript . " - RSI error" );
+				$mail->Subject = "Specialty Produce Invoice";
+				$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
+				$mail->AddAttachment ( $s123File, $s123Filename );
+				// Add the body
+				$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " . $locInfo [$argv [1]] ['name'] . "\n - Specialty Produce System";
+				// Send the email
+				if (! $mail->Send ()) {
+					$errMsg = "Simple123 : Send mail error : " . InvoiceSP_Simple123::EMAIL_RECIPIENT_CSV;
+					SP_errorLogging ( $errMsg, true, '', $currentScript . " - Simple123 error" );
+				}
+				$mail->ClearAttachments ();
+				$mail->ClearAllRecipients ();
+				sleep ( 3 );
+				// Put up in Azure
+				// $azb = new AzureBlobSP ( 'specprodstorage', false );
+				// $azb->putBlockBlobFile ( AzureBlobSP::AZURE_STORAGE_FTP_DIR, DART_SIMPLE123_FTP_DIR, $s123Filename, $s123File );
+				// unlink ( $s123File );
 			}
-			$mail->ClearAttachments ();
-			$mail->ClearAllRecipients ();
-			// SP_ErrorLogging ( "PlateIQ sent for $plateIQFilename : " . file_get_contents ( $plateIQFile ), true, "", "PlateIQ Alert" );
-			sleep ( 3 );
-			unlink ( $plateIQFile );
+			// Any PDFs to email?
+			if (count ( $sIDsToEmail ) > 0) {
+				$mail->FromName = "Specialty Produce Accounting";
+				$mail->From = "ar@specialtyproduce.com";
+				$mail->AddAddress ( InvoiceSP_Simple123::EMAIL_RECIPIENT_PDF );
+				if ($debug)
+					$mail->AddBCC ( $debugMail, $debugName );
+				$mail->AddBCC ( $debugMail, $debugName );
+				$mail->Subject = "Specialty Produce Invoice";
+				$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
+				foreach ( $sIDsToEmail as $saleID )
+					$mail->AddAttachment ( DART_PDF_DIR . $saleID . ".pdf", "$saleID.pdf" );
+				// Add the body
+				$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " . $locInfo [$argv [1]] ['name'] . "\n - Specialty Produce System";
+				// Send the email
+				if (! $mail->Send ()) {
+					$errMsg = "Simple123 : Send mail error : " . InvoiceSP_Simple123::EMAIL_RECIPIENT_PDF;
+					SP_errorLogging ( $errMsg, true, '', $currentScript . " - Simple123 error" );
+				}
+				$mail->ClearAttachments ();
+				$mail->ClearAllRecipients ();
+				sleep ( 3 );
+			}
 		}
-		$mail->ClearAllRecipients ();
 	} else {
 		if ($adhoc)
-			echo "NOT sending via RSI...\n";
+			echo "NOT sending via FTP to Simple123...\n";
+	}
+	
+	// QSROnline
+	if ($qsronlineCSV) {
+		if ($adhoc)
+			echo "Sending via FTP to QSROnline...\n";
+		if (count ( $qsronlineIDs ) > 0) {
+			try {
+				$azb = new AzureBlobSP ( 'specprodstorage', false );
+				foreach ( $locInfo as $loc ) {
+					$qsrFilename = $loc ['id'] . '_' . $loc ['saleID'] . '_' . date ( 'ymd_His' ) . '.csv';
+					$invQSR = new InvoiceSP_QSROnline ();
+					$invQSR->retrieveInvoice ( $loc ['saleID'] );
+					$qsrString = $invQSR->generateInvoiceCSV ();
+					$qsrFile = SPConsts::TempDir . $qsrFilename;
+					file_put_contents ( $qsrFile, $qsrString );
+					$azb->putBlockBlobFile ( AzureBlobSP::AZURE_STORAGE_FTP_DIR, $invQSR::FILEMAGE_FTP_DIR, $qsrFilename, $qsrFile );
+					// Disabled writing to DART FTP folder when QSR updated to Azure FTP
+					// Email 2/12/20 : Re:[## 27812 ##] Specialty Produce FTP server moving
+					// $qsrFile = DART_QSR_DIR . $qsrFilename;
+					// $qsrFH = fopen ( $qsrFile, "w" );
+					// fwrite ( $qsrFH, $qsrString );
+					// fclose ( $qsrFH );
+					sleep ( 3 );
+					unlink ( $qsrFile );
+				}
+			} catch ( SP_Exception $spe ) {
+				$errMsg = "QSROnline :  error : " . $spe->getMessage ();
+				SP_errorLogging ( $errMsg, true, '', $currentScript . " - QSROnline error" );
+				continue;
+			}
+		}
+	} else {
+		if ($adhoc)
+			echo "NOT sending via FTP to QSROnline...\n";
 	}
 	
 	// Remove the PDFs
 	// Do not remove the PDF files, we're going to let them stay for 90 days and delete them with a Scheduled Task
+	if ($adhoc) {
+		echo "Done...";
+		echo "</pre>\n";
+	}
 }
-if ($adhoc) {
-	echo "\n*** Done...";
-	echo "</pre>\n";
-}
+// error_log("$currentScript : sent : " . html_entity_decode($invXML) . " : " . print_r($argv, true));
 exit ( 0 );
 ?>

@@ -47,7 +47,8 @@ $pdfMail = true;
 $pdfFax = true;
 $processEDIs = true;
 $rsiMail = true;
-$hulaMail = true;
+// Removed since no locations are using it, tblDartInvoiceSendHula, and need to reconfigure directories
+$hulaMail = false;
 $pppMail = true;
 $bevagerFTP = false; // Not been used in 3 months - disable - AZURE update if this is getting turned back on!!!
 $r365FTP = true;
@@ -496,30 +497,44 @@ if ($pdfMail || $pdfFax) {
 		// Add the signature and signer info
 		if ($pdf->checkNoSpaceLeft ( 1.61 ))
 			$pdf->markContinued ();
-		$hasSignature = false;
 		if ($locInfo [$invNum] ['darkstop']) {
-			// $sigImageFile = DART_SIG_DIR . 'darkstop.png';
-			$sigImageFile = 'C:/inetpub/wwwroot/Dart/images/' . 'darkstop.png';
-			$hasSignature = true;
+			$sigImage = DART_SIG_DIR . 'darkstop.png';
 		} else {
-			// OLD : $sigImage = DART_SIG_DIR . $locInfo [$invNum] ['id'] . '/' . $invNum . '.png';
-			// Get the Azure signature file
-			$sigFileName = $invNum . ".png";
-			$sigImageFile = SPConsts::TempDir . $sigFileName;
-			try {
-				$azf = new AzureFileSP ( 'specprodshares' );
-				// Write it out
-				$azf->getFile ( AFSPConstants::AZURE_SPS_DARTSIG, $locInfo [$invNum] ['id'], $sigFileName, $sigImageFile );
-				$hasSignature = true;
-			} catch ( SP_Exception $e ) {
-				$eMessage = $e->getMessage ();
-				$errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $eMessage;
-				SP_ErrorLogging ( $errorTxt, true, DART_ERROR_LOG, "SPRemote : AZ File : $currentScript" );
-				$hasSignature = false;
-			}
+			$sigImage = DART_SIG_DIR . $locInfo [$invNum] ['id'] . '/' . $invNum . '.png';
 		}
-		if ($hasSignature)
-			$pdf->addSignatureImage ( $sigImageFile );
+		$pdf->addSignatureImage ( $sigImage );
+		/**
+		 * Azure DART
+		 */
+		/*
+		 * $hasSignature = false;
+		 * if ($locInfo [$invNum] ['darkstop']) {
+		 * $sigImageFile = DART_SIG_DIR . 'darkstop.png';
+		 * $hasSignature = true;
+		 * } else {
+		 * $sigImageFile = DART_SIG_DIR . $locInfo [$invNum] ['id'] . '/' . $invNum . '.png';
+		 * $hasSignature = true;
+		 *
+		 * if (! file_exists ( $sigImageFile )) {
+		 * // Get the Azure signature file
+		 * $sigFileName = $invNum . ".png";
+		 * $sigImageFile = SPConsts::TempDir . $sigFileName;
+		 * try {
+		 * $azf = new AzureFileSP ( 'specprodshares' );
+		 * // Write it out
+		 * $azf->getFile ( AFSPConstants::AZURE_SPS_DARTSIG, $locInfo [$invNum] ['id'], $sigFileName, $sigImageFile );
+		 * $hasSignature = true;
+		 * } catch ( SP_Exception $e ) {
+		 * $eMessage = $e->getMessage ();
+		 * $errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $eMessage;
+		 * SP_ErrorLogging ( $errorTxt, true, DART_ERROR_LOG, "SPRemote : AZ File : $currentScript" );
+		 * $hasSignature = false;
+		 * }
+		 * }
+		 * }
+		 * if ($hasSignature)
+		 * $pdf->addSignatureImage ( $sigImageFile );
+		 */
 		// Add signer info
 		$pdf->addSigner ( $locInfo [$invNum] ['signer'], $locInfo [$invNum] ['deldate'] );
 		// Add COG info
@@ -578,8 +593,13 @@ if ($pdfMail || $pdfFax) {
 		$outFile = DART_PDF_DIR . $invNum . ".pdf";
 		$pdf->Output ( $outFile, 'F' );
 		$pdf = null;
-		if (! $locInfo [$invNum] ['darkstop'] && $hasSignature)
-			unlink ( $sigImageFile );
+	/**
+	 * Azure DART
+	 */
+		/*
+		 * if (! $locInfo [$invNum] ['darkstop'] && $hasSignature)
+		 * unlink ( $sigImageFile );
+		 */
 	}
 }
 
@@ -781,9 +801,9 @@ EOT;
 					continue;
 				}
 				$outFileName = 'O_SP_' . date ( 'ymd_His' ) . '_' . $loc ['saleID'] . '.810';
-				$outPath = EDISPConsts::FTP_ROOT;
-				$outPath .= (strlen ( $loc ['parentFTP'] ) > 0) ? $loc ['parentFTP'] . '\\' : '';
-				$outPath .= $loc ['ediID'] . '\\outgoing\\';
+				$outPath = EDISPConsts::EDI_BACKUP;
+				$outPath .= (strlen ( $loc ['parentFTP'] ) > 0) ? $loc ['parentFTP'] . '/' : '';
+				$outPath .= $loc ['ediID'] . '/outgoing/';
 				$outFile = $outPath . $outFileName;
 				if (! file_put_contents ( $outFile, $msg )) {
 					$errMsg = "Error writing outgoing 810 : $outFile" . "\nfor invoice # " . $loc ['saleID'];
@@ -811,28 +831,31 @@ EOT;
 					} else {
 						$errMsg = "File not sent successfully, moved to flagged folder on vDart:\n$outFile\nfor invoice # " . $loc ['saleID'];
 						SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, $currentScript . " - EDI error" );
-						flagFTPFile ( $loc ['ediID'], $outFile );
+						// flagFTPFile ( $loc ['ediID'], $outFile );
 					}
 				}
 				// Save the outgoing file to the EDI dir
-				if ($sentSuccessfully) {
-					$savePath = EDISPConsts::EDI_SAVE_DIR . $loc ['ediID'] . '\\outgoing\\' . $outFileName;
-					if (! copy ( $outFile, $savePath )) {
-						$errMsg = "Error saving $outFile to $savePath\nfor invoice # " . $loc ['saleID'];
-						SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
-						continue;
-					}
-					if ($adhoc)
-						echo "Sent $outFileName for saleID = $saleID\n";
-					// Unlink the file if we sent it, otherwise it will sit waiting to be picked up and subsequently deleted.
-					if (constant ( 'EDISPConsts::' . $loc ['ediID'] . "_SENDFTP" )) {
-						if (! unlink ( $outFile )) {
-							$errMsg = "Error unlinking $outFile\nfor invoice # " . $loc ['saleID'];
-							SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
-							continue;
-						}
-					}
-				}
+				// Don't have to do this after Azure move since we're saving the files at the start.
+				/*
+				 * if ($sentSuccessfully) {
+				 * $savePath = EDISPConsts::EDI_SAVE_DIR . $loc ['ediID'] . '\\outgoing\\' . $outFileName;
+				 * if (! copy ( $outFile, $savePath )) {
+				 * $errMsg = "Error saving $outFile to $savePath\nfor invoice # " . $loc ['saleID'];
+				 * SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
+				 * continue;
+				 * }
+				 * if ($adhoc)
+				 * echo "Sent $outFileName for saleID = $saleID\n";
+				 * // Unlink the file if we sent it, otherwise it will sit waiting to be picked up and subsequently deleted.
+				 * if (constant ( 'EDISPConsts::' . $loc ['ediID'] . "_SENDFTP" )) {
+				 * if (! unlink ( $outFile )) {
+				 * $errMsg = "Error unlinking $outFile\nfor invoice # " . $loc ['saleID'];
+				 * SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
+				 * continue;
+				 * }
+				 * }
+				 * }
+				 */
 			}
 			// Need to sleep 2 seconds so we don't overwrite a file
 			sleep ( 2 );
@@ -897,6 +920,7 @@ if ($rsiMail) {
 }
 
 // Process Hula Invoices
+// Disabled, see $hulaMail above
 if ($hulaMail) {
 	if ($adhoc)
 		echo "Sending via HULA...\n";
@@ -1176,20 +1200,26 @@ if ($plateIQMail) {
 // Simple123
 if ($simple123CSV) {
 	if ($adhoc)
-		echo "Saving in FTP for Simple123...\n";
+		echo "Emailing via Simple123...\n";
 	if (count ( $simple123IDs ) > 0) {
 		$s123Filename = $locInfo [$argv [1]] ['id'] . '-invoice-' . date ( 'ymd-His' ) . '.csv';
-		$s123File = DART_SIMPLE123_DIR . $s123Filename;
+		$s123File = SPConsts::TempDir . $s123Filename;
 		$s123FH = fopen ( $s123File, "w" );
 		$firstEntry = true;
+		$sIDsToEmail = array ();
 		foreach ( $locInfo as $loc ) {
 			try {
 				$inv = new InvoiceSP_Simple123 ();
+				$inv->retrieveInvoice ( $loc ['saleID'] );
+				// Check for negative quantities
+				//if ($inv->containsNegativeQuantites ()) {
+				//	$sIDsToEmail [] = $loc ['saleID'];
+				//	continue;
+				//}
 				if ($firstEntry) {
 					fwrite ( $s123FH, $inv->getCSVHeader () . "\n" );
 					$firstEntry = false;
 				}
-				$inv->retrieveInvoice ( $loc ['saleID'] );
 				fwrite ( $s123FH, $inv->generateInvoiceCSV () );
 			} catch ( SP_Exception $spe ) {
 				$errMsg = "Simple123 : Retrieve invoice error : " . $spe->getMessage ();
@@ -1198,6 +1228,55 @@ if ($simple123CSV) {
 			}
 		}
 		fclose ( $s123FH );
+		// Is there a CSV to email?
+		if ($firstEntry == false) {
+			$mail->FromName = "Specialty Produce Accounting";
+			$mail->From = "ar@specialtyproduce.com";
+			$mail->AddAddress ( InvoiceSP_Simple123::EMAIL_RECIPIENT_CSV );
+			if ($debug)
+				$mail->AddBCC ( $debugMail, $debugName );
+			$mail->AddBCC ( $debugMail, $debugName );
+			$mail->Subject = "Specialty Produce Invoice";
+			$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
+			$mail->AddAttachment ( $s123File, $s123Filename );
+			// Add the body
+			$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " . $locInfo [$argv [1]] ['name'] . "\n - Specialty Produce System";
+			// Send the email
+			if (! $mail->Send ()) {
+				$errMsg = "Simple123 : Send mail error : " . InvoiceSP_Simple123::EMAIL_RECIPIENT_CSV;
+				SP_errorLogging ( $errMsg, true, '', $currentScript . " - Simple123 error" );
+			}
+			$mail->ClearAttachments ();
+			$mail->ClearAllRecipients ();
+			sleep ( 3 );
+			// Put up in Azure
+			// $azb = new AzureBlobSP ( 'specprodstorage', false );
+			// $azb->putBlockBlobFile ( AzureBlobSP::AZURE_STORAGE_FTP_DIR, DART_SIMPLE123_FTP_DIR, $s123Filename, $s123File );
+			// unlink ( $s123File );
+		}
+		// Any PDFs to email?
+		if (count ( $sIDsToEmail ) > 0) {
+			$mail->FromName = "Specialty Produce Accounting";
+			$mail->From = "ar@specialtyproduce.com";
+			$mail->AddAddress ( InvoiceSP_Simple123::EMAIL_RECIPIENT_PDF );
+			if ($debug)
+				$mail->AddBCC ( $debugMail, $debugName );
+			$mail->AddBCC ( $debugMail, $debugName );
+			$mail->Subject = "Specialty Produce Invoice";
+			$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
+			foreach ( $sIDsToEmail as $saleID )
+				$mail->AddAttachment ( DART_PDF_DIR . $saleID . ".pdf", "$saleID.pdf" );
+			// Add the body
+			$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " . $locInfo [$argv [1]] ['name'] . "\n - Specialty Produce System";
+			// Send the email
+			if (! $mail->Send ()) {
+				$errMsg = "Simple123 : Send mail error : " . InvoiceSP_Simple123::EMAIL_RECIPIENT_PDF;
+				SP_errorLogging ( $errMsg, true, '', $currentScript . " - Simple123 error" );
+			}
+			$mail->ClearAttachments ();
+			$mail->ClearAllRecipients ();
+			sleep ( 3 );
+		}
 	}
 } else {
 	if ($adhoc)
