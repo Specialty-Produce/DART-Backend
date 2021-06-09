@@ -1,21 +1,7 @@
 <?php
 include_once 'global_CDC.php';
-include 'dart_init.php';
+include '../dart_init.php';
 $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
-
-// Browers on our local network get access to the pages, otherwise you have to have validated as an SP employee
-$dotted_ip_address = $_SERVER ['REMOTE_ADDR'];
-$ip_number = (ip2long ( $dotted_ip_address )) ? sprintf ( "%u", ip2long ( $dotted_ip_address ) ) : 0;
-if ($ip_number < 1185397282 || $ip_number > 1185397309) {
-	echo "Action not allowed...";
-	exit ();
-}
-
-$userid = filter_input ( INPUT_GET, 'u', FILTER_VALIDATE_INT );
-if ($userid == FALSE || is_null ( $userid )) {
-	echo "No user ID provided...";
-	exit ();
-}
 
 // On various errors and failures, we'll use the status BAD update XML
 $badXML = <<< EOT
@@ -23,6 +9,18 @@ $badXML = <<< EOT
 <driverroute_location_list status="failed" code="0" retry="true" errmsg="XXX">
 </driverroute_location_list>
 EOT;
+
+echo "No active...";
+exit();
+
+// Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
+$codeStr = generateRandomCode ( 6 );
+
+
+
+// User ID
+$userid = 82135;
+dartLogging ( $currentScript, "userID=" . $userid, $codeStr );
 
 try {
 	$dbh = new PDO ( 'spdb', '', '' );
@@ -82,12 +80,17 @@ foreach ( $routeInfo as $entry ) {
 		$locationList [] = $locID;
 		// It is a new location to enter into the array
 		// mb_convert_encoding ( $result['tSeasonal'], "UTF-8", "Windows-1252" )
-		$location [$locID] = array ('id' => $locID, 'sort' => 1, 'lastupdate' => $lastUpdate, 'name' => mb_convert_encoding ( $entry ['sDescription'], "UTF-8", "Windows-1252" ), 'street' => mb_convert_encoding ( $entry ['sAddress1'], "UTF-8", "Windows-1252" ), 'city' => mb_convert_encoding ( $entry ['sCity'], "UTF-8", "Windows-1252" ), 'state' => mb_convert_encoding ( $entry ['sState'], "UTF-8", "Windows-1252" ), 'zip' => mb_convert_encoding ( $entry ['sPostalCode'], "UTF-8", "Windows-1252" ), 'gpslat' => $entry ['sGpsLat'], 'gpslon' => $entry ['sGpsLon'], 'phone' => mb_convert_encoding ( $entry ['sPhone'], "UTF-8", "Windows-1252" ), 'deliverytime' => $entry ['sTime'], 'requirespaper' => $entry ['iInvoiceException'], 'allowdarkdrop' => ($entry ['iNDS'] == 0) ? 'true' : 'false', 'locnotes' => mb_convert_encoding ( $entry ['txtLocationNotes'], "UTF-8", "Windows-1252" ), 'salesname' => mb_convert_encoding ( $entry ['txtSalesPerson'], "UTF-8", "Windows-1252" ), 'salesemail' => mb_convert_encoding ( $entry ['txtEmail'], "UTF-8", "Windows-1252" ), 'salesphone' => mb_convert_encoding ( $entry ['txtCellPhone'], "UTF-8", "Windows-1252" ), 'acctnote' => mb_convert_encoding ( $entry ['sAccountingNote'], "UTF-8", "Windows-1252" ), 'terms' => mb_convert_encoding ( $entry ['sTerms'], "UTF-8", "Windows-1252" ), 'invoices' => array (), 'signers' => array () );
+		$location [$locID] = array ('id' => $locID, 'sort' => 1, 'lastupdate' => $lastUpdate, 'name' => mb_convert_encoding ( $entry ['sDescription'], "UTF-8", "Windows-1252" ), 'street' => mb_convert_encoding ( $entry ['sAddress1'], "UTF-8", "Windows-1252" ),
+				'city' => mb_convert_encoding ( $entry ['sCity'], "UTF-8", "Windows-1252" ), 'state' => mb_convert_encoding ( $entry ['sState'], "UTF-8", "Windows-1252" ), 'zip' => mb_convert_encoding ( $entry ['sPostalCode'], "UTF-8", "Windows-1252" ), 'gpslat' => trim($entry ['sGpsLat']),
+				'gpslon' => trim($entry ['sGpsLon']), 'phone' => mb_convert_encoding ( $entry ['sPhone'], "UTF-8", "Windows-1252" ), 'deliverytime' => $entry ['sTime'], 'requirespaper' => $entry ['iInvoiceException'], 'allowdarkdrop' => ($entry ['iNDS'] == 0) ? 'true' : 'false',
+				'locnotes' => mb_convert_encoding ( $entry ['txtLocationNotes'], "UTF-8", "Windows-1252" ), 'salesname' => mb_convert_encoding ( $entry ['txtSalesPerson'], "UTF-8", "Windows-1252" ), 'salesemail' => mb_convert_encoding ( $entry ['txtEmail'], "UTF-8", "Windows-1252" ),
+				'salesphone' => mb_convert_encoding ( $entry ['txtCellPhone'], "UTF-8", "Windows-1252" ), 'acctnote' => mb_convert_encoding ( $entry ['sAccountingNote'], "UTF-8", "Windows-1252" ), 'terms' => mb_convert_encoding ( $entry ['sTerms'], "UTF-8", "Windows-1252" ), 'invoices' => array (),
+				'signers' => array ());
 		// Add the invoice and set the update time
-		$location [$locID] ['invoices'] [] = array ('lastupdate' => $lastUpdate, 'number' => $entry ['iSaleID'], 'currentstate' => (is_null ( $entry ['iDartStatusID'] )) ? 0 : $entry ['iDartStatusID'], 'invnotes' => mb_convert_encoding ( $entry ['txtInvoiceNotes'], "UTF-8", "Windows-1252" ) );
+		$location [$locID] ['invoices'] [] = array ('lastupdate' => $lastUpdate, 'number' => $entry ['iSaleID'], 'currentstate' => (is_null ( $entry ['iDartStatusID'] )) ? 0 : $entry ['iDartStatusID'], 'invnotes' => mb_convert_encoding ( $entry ['txtInvoiceNotes'], "UTF-8", "Windows-1252" ));
 	} else {
 		// We have already seen this location, so add the invoice and change the lastupdate time if needed
-		$location [$locID] ['invoices'] [] = array ('lastupdate' => $lastUpdate, 'number' => $entry ['iSaleID'], 'currentstate' => (is_null ( $entry ['iDartStatusID'] )) ? 0 : $entry ['iDartStatusID'], 'invnotes' => mb_convert_encoding ( $entry ['txtInvoiceNotes'], "UTF-8", "Windows-1252" ) );
+		$location [$locID] ['invoices'] [] = array ('lastupdate' => $lastUpdate, 'number' => $entry ['iSaleID'], 'currentstate' => (is_null ( $entry ['iDartStatusID'] )) ? 0 : $entry ['iDartStatusID'], 'invnotes' => mb_convert_encoding ( $entry ['txtInvoiceNotes'], "UTF-8", "Windows-1252" ));
 		if (strtotime ( $lastUpdate ) > strtotime ( $location [$locID] ['lastupdate'] ))
 			$location [$locID] ['lastupdate'] = $lastUpdate;
 	}
@@ -95,7 +98,8 @@ foreach ( $routeInfo as $entry ) {
 
 // Add the signer info for each location
 foreach ( $signerInfo as $entry ) {
-	$location [$entry ['iLocationDestinationID']] ['signers'] [] = array ('userID' => $entry ['iUserID'], 'fname' => mb_convert_encoding ( $entry ['txtFirstName'], "UTF-8", "Windows-1252" ), 'lname' => mb_convert_encoding ( $entry ['txtLastName'], "UTF-8", "Windows-1252" ), 'cell' => preg_replace ( '/[^0-9]/', '', $entry ['txtCellPhone'] ), 'email' => $entry ['txtEmail'] );
+	$location [$entry ['iLocationDestinationID']] ['signers'] [] = array ('userID' => $entry ['iUserID'], 'fname' => mb_convert_encoding ( $entry ['txtFirstName'], "UTF-8", "Windows-1252" ), 'lname' => mb_convert_encoding ( $entry ['txtLastName'], "UTF-8", "Windows-1252" ),
+			'cell' => preg_replace ( '/[^0-9]/', '', $entry ['txtCellPhone'] ), 'email' => $entry ['txtEmail']);
 }
 
 // Generate the XML
@@ -135,7 +139,7 @@ foreach ( $locationList as $locID ) {
 	$resultStr .= "<signers_entry_list>\n";
 	if ($requiresPaper == "false") {
 		foreach ( $location [$locID] ['signers'] as $entry ) {
-			$resultStr .= '<entry id="' . $entry ['userID'] . '" cell="' . $entry['cell'] . '" email="' . $entry['email'] . '">' . $entry ['fname'] . " " . $entry ['lname'] . "</entry>\n";
+			$resultStr .= '<entry id="' . $entry ['userID'] . '" cell="' . $entry ['cell'] . '" email="' . $entry ['email'] . '" first="' . $entry ['fname'] . '" last="' . $entry ['lname'] . '">' . $entry ['fname'] . " " . $entry ['lname'] . "</entry>\n";
 		}
 	}
 	// The signer to use if there is a paper invoice present.
@@ -146,5 +150,6 @@ foreach ( $locationList as $locID ) {
 }
 $resultStr .= "</driverroute_location_list>";
 echo $resultStr;
+dartLogging ( $currentScript, "  Success", $codeStr );
 exit ();
 ?>

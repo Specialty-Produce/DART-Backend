@@ -1,5 +1,6 @@
 <?php
 include_once 'global_CDC.php';
+include_once 'classes_SP/class_ADP_SP.php';
 include 'dart_init.php';
 $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 
@@ -78,6 +79,16 @@ if ($result === false) {
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
 	echo $badXML;
 	exit ();
+}
+
+// Submit to ADP
+try {
+	$badgeID = ADP_SP::getEmployeeBadgeID ( $userid );
+	$punchResult = ADP_SP::submitPunch ( $badgeID, 'lunchout', date ( 'c', strtotime ( $starttime ) ) );
+	//SP_ErrorLogging ( "$currentScript : Submit to ADP : $badgeID : $punchResult", true, DART_ERROR_LOG, 'ADP Submit : lunchout' );
+} catch ( SP_Exception $e ) {
+	$errMsg = "ADP Error : " . $e->getMessage ();
+	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 }
 
 // Generate the XML

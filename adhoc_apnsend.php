@@ -1,11 +1,12 @@
 <?php
 include_once 'global_CDC.php';
+include_once 'classes_SP/class_APN_SP.php';
 $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 
 // APN constants
-$cert = array ();
-$cert ['d'] = 'include\DART_APN_DEVEVELOPMENT_Certificates_160721.pem';
-$cert ['p'] = 'include\DART_APN_PRODUCTION_Certificates_160721.pem';
+// $cert = array ();
+$cert = 'include\Enterprise_PROD_aps_MAY2020.pem';
+// $cert ['p'] = 'include\190412_APN_PROD.pem';
 $host = array ();
 $host ['d'] = 'gateway.sandbox.push.apple.com';
 $host ['p'] = 'gateway.push.apple.com';
@@ -20,6 +21,8 @@ $defSound = '';
 $contentID = '';
 $aptVal = '';
 $iid = '';
+$pushType = '';
+$priority = '';
 ?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
@@ -71,20 +74,25 @@ if (isset ( $_POST ['apnSubmit'] )) {
 	if ($iid === FALSE || is_null ( $iid )) {
 		$iid = '';
 	}
-	// Setup and open connection
-	$streamContext = stream_context_create ();
-	stream_context_set_option ( $streamContext, 'ssl', 'local_cert', $cert [$tokenType] );
-	$apns = stream_socket_client ( 'ssl://' . $host [$tokenType] . ':' . $port, $errorNo, $errorString, 2, STREAM_CLIENT_CONNECT, $streamContext );
-	if ($errorNo > 0) {
-		echo "<br/><br/>stream_socket_client open : $errorNo : $errorString<br/><br/>\n";
+	// push type
+	$pushType = filter_input ( INPUT_POST, 'aptPushType', FILTER_SANITIZE_STRING );
+	if ($pushType === FALSE || is_null ( $pushType )) {
+		$pushType = '';
+	}
+	// priority
+	$priority = filter_input ( INPUT_POST, 'aptPriority', FILTER_SANITIZE_STRING );
+	if ($priority === FALSE || is_null ( $priority )) {
+		$priority = '';
+	}
+	error_log ( "$currentScript : sending : " . print_r ( $_POST, true ) );
+	
+	// Initialize
+	$apn = new APN_SP ( $cert, $host [$tokenType], 2195, 'include\Entrust_CA_2048.pem' );
+	$apn->setPushPriority ( $pushType, $priority );
+	list ( $initResult, $errMsg ) = $apn->initialize ();
+	if ($initResult == false) {
+		echo "<br/><br/>initialize() returned FALSE : error message = " . $errMsg . "<br/><br/>\n";
 	} else {
-		/*
-		 * $extra = ''; if (strlen($key1) > 0) { $extra = ',"' . $key1 . '":"' . $val1 . '"'; } if (strlen($key2) > 0) { $extra .= ',"' . $key2 . '":"' . $val2 . '"'; } if (strlen($key3) > 0) { $extra .= ',"' . $key3 . '":"' . $val3 . '"'; }
-		 */
-
-		// ' . rand(1000, 50000) . '
-
-		// aps
 		$apsComma = false;
 		$payload = '{"aps":{';
 		if (strlen ( $contentAvailable ) > 0) {
@@ -103,7 +111,7 @@ if (isset ( $_POST ['apnSubmit'] )) {
 			$payload .= '"sound":"' . $defSound . '"';
 		}
 		$payload .= '}';
-
+		
 		// other
 		if (strlen ( $contentID ) > 0) {
 			$payload .= ',';
@@ -118,15 +126,19 @@ if (isset ( $_POST ['apnSubmit'] )) {
 			$payload .= '"iid":"' . $iid . '"';
 		}
 		$payload .= '}';
-
-		$apnsMessage = chr ( 0 ) . chr ( 0 ) . chr ( 32 ) . pack ( 'H*', str_replace ( ' ', '', $apnToken ) ) . chr ( 0 ) . chr ( strlen ( $payload ) ) . $payload;
-		fwrite ( $apns, $apnsMessage );
-		fclose ( $apns );
-		echo "Sent!<br/>Token = $apnToken";
-		echo "<br/>\n";
-		echo "Message : $alertText";
-		echo "<br/><br/>\n";
-		echo "<pre>Payload = " . $payload . "</pre>\n<br/>";
+		
+		error_log ( "$currentScript : $apnToken : $payload" );
+		
+		list ( $sendResult, $errMsg ) = $apn->sendPayload ( $apnToken, $payload );
+		if ($sendResult == false) {
+			echo "sendPayload() returned FALSE : error message = $errMsg<br/><br/>\n";
+		} else {
+			echo "Sent!<br/>Token = $apnToken";
+			echo "<br/>\n";
+			echo "Message : $alertText";
+			echo "<br/><br/>\n";
+			echo "<pre>Payload = " . $payload . "</pre>\n<br/>";
+		}
 	}
 }
 ?>
@@ -166,13 +178,19 @@ if (isset ( $_POST ['apnSubmit'] )) {
 				?>" /> <br /> <br />"invoice" id : <input type="text" name="iID"
 				value="<?php
 				echo $iid;
+				?>" /> <br /> <br />"push-type" value : <input type="text"
+				name="aptPushType" value="<?php
+				echo $pushType;
+				?>" /> <br /> <br />"priority" value : <input type="text"
+				name="aptPriority" value="<?php
+				echo $priority;
 				?>" /> <br /> <!--
 Additional key-value pairs:<br/>
 <input type="text" name="key1" value="<?php //echo $key1; ?>"/> - <input type="text" name="val1" value="<?php //echo $val1; ?>"/><br/>
 <input type="text" name="key2" value="<?php //echo $key2; ?>"/> - <input type="text" name="val2" value="<?php //echo $val2; ?>"/><br/>
 <input type="text" name="key3" value="<?php //echo $key3; ?>"/> - <input type="text" name="val3" value="<?php //echo $val3; ?>"/><br/>
  --> <br /> <input type="submit" name="apnSubmit" value="Send" />
-
+	
 	</form>
 </body>
 </html>

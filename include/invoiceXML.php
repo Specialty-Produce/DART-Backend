@@ -1,11 +1,18 @@
 <?php
+include_once 'global_CDC.php';
 global $invoiceList, $priceList;
 
 foreach ( $invoiceList as $inv ) {
+	if (!isset($inv ['saleID'])) {
+		SP_ErrorLogging ( 'invoiceXML : saleID NOT set : ' . print_r($inv, true), false, DART_ERROR_LOG );
+	}
 	$resultStr .= '<invoice saleid="' . $inv ['saleID'] . '" locid="' . $inv ['locID'] . '" lastupdate="' . $inv ['lastupdate'] . '" date="' . $inv ['date'] . '">' . "\n";
 	$resultStr .= "<notes>" . $inv ['notes'] . "</notes>\n";
 	$resultStr .= "<ponumber>" . $inv ['po'] . "</ponumber>\n";
 	$resultStr .= "<terms>" . $inv ['terms'] . "</terms>\n";
+	if (!isset($inv ['packerlocation'])) {
+		SP_ErrorLogging ( 'invoiceXML : packerlocation NOT set : ' . $inv ['saleID'], false, DART_ERROR_LOG );
+	}
 	$resultStr .= "<packerlocation>" . $inv['packerlocation'] . "</packerlocation>\n";
 	$resultStr .= "<invoice_item_list>\n";
 	$sortCount = 1;

@@ -10,6 +10,12 @@ $badXML = <<< EOT
 </apnconfirm>
 EOT;
 
+$goodXML = <<< EOT
+<?xml version="1.0"?>
+<apnconfirm status="success">
+</apnconfirm>
+EOT;
+
 // Log the POST data
 $postData = (isset ( $_POST )) ? serialize ( $_POST ) : 'none';
 dartLogging ( $currentScript, "POST data=" . $postData );
@@ -26,6 +32,15 @@ if ($invoiceID == FALSE || is_null ( $invoiceID )) {
 	$invoiceID = 0;
 }
 
+$debugInvoices = array (
+		4514248,
+		4514195 
+);
+if (in_array ( $invoiceID, $debugInvoices )) {
+	echo $goodXML;
+	exit ();
+}
+
 if ($contentID == 0 && $invoiceID == 0) {
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : ContentID and IID cannot both be 0', $badXML );
 	$badXML = preg_replace ( '/true/', $currentScript . 'false', $badXML );
@@ -38,14 +53,14 @@ try {
 	$dbh = new PDO ( 'spdb', '', '' );
 	// set the error reporting attribute.
 	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-
+	
 	$sql = "UPDATE tblDARTAPNASAP SET dtConfirmed=:dateSent WHERE iAutoID=$contentID";
 	$stmt = $dbh->prepare ( $sql );
 	$thisDate = date ( "Y-m-d H:i:s", time () ) . ".000";
 	$stmt->bindParam ( ':dateSent', $thisDate );
 	$stmt->execute ();
 	unset ( $stmt );
-
+	
 	$dbh = null;
 } catch ( PDOException $e ) {
 	$errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $e->getMessage ();
@@ -53,11 +68,6 @@ try {
 	exit ();
 }
 
-$resultXML = <<< EOT
-<?xml version="1.0"?>
-<apnconfirm status="success">
-</apnconfirm>
-EOT;
-echo $resultXML;
+echo $goodXML;
 exit ();
 ?>

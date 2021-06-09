@@ -29,7 +29,7 @@ if ($saleID == FALSE || is_null ( $saleID )) {
 
 // Send the PO
 echo "<h2>Progress...</h2>\n";
-include_once 'EDI_SP\Receivers\\' . $ediID . '\ts810.php';
+include_once 'EDI_SP/Receivers/' . $ediID . '/ts810.php';
 $tsFunction = $ediID . '_810';
 list ( $success, $msg ) = $tsFunction ( $saleID );
 if (! $success) {
