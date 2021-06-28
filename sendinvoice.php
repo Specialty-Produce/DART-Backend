@@ -308,7 +308,14 @@ while ( $sqlFailed ) {
 		}
 		
 		// Simple123
-		$stmt = $dbh->query ( "SELECT iLocationID FROM tblDARTInvoiceSendSimple123 WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+		$stmt = $dbh->query ( "SELECT (case
+								when g.iLocationID is null then s.iLocationID
+								when g.iLocationSubParentID = 0 then g.iLocationID
+								else g.iLocationSubParentID
+								end) as iS123LocID
+								FROM tblDARTInvoiceSendSimple123 s
+								LEFT JOIN tblLocationGroupDetail g on g.iLocationID = s.iLocationID
+								WHERE s.iLocationID=" . $locInfo [$argv [1]] ['id'] );
 		$simple123IDs = $stmt->fetchAll ( PDO::FETCH_ASSOC );
 		$stmt->closeCursor ();
 		if ($adhoc) {
@@ -498,43 +505,21 @@ if ($pdfMail || $pdfFax) {
 		if ($pdf->checkNoSpaceLeft ( 1.61 ))
 			$pdf->markContinued ();
 		if ($locInfo [$invNum] ['darkstop']) {
-			$sigImage = DART_SIG_DIR . 'darkstop.png';
+			if (is_file ( DART_SIG_DIR . 'darkstop.png' )) {
+				$sigImage = DART_SIG_DIR . 'darkstop.png';
+			} else {
+				$sigImage = DART_SIG_BACKUP_DIR . 'darkstop.png';
+			}
 		} else {
-			$sigImage = DART_SIG_DIR . $locInfo [$invNum] ['id'] . '/' . $invNum . '.png';
+			if (is_file ( DART_SIG_DIR . $locInfo [$invNum] ['id'] . '/' . $invNum . '.png' )) {
+				// Azure Storage IS working
+				$sigImage = DART_SIG_DIR . $locInfo [$invNum] ['id'] . '/' . $invNum . '.png';
+			} else {
+				// Azure Storage NOT working
+				$sigImage = DART_SIG_BACKUP_DIR . $locInfo [$invNum] ['id'] . '/' . $invNum . '.png';
+			}
 		}
 		$pdf->addSignatureImage ( $sigImage );
-		/**
-		 * Azure DART
-		 */
-		/*
-		 * $hasSignature = false;
-		 * if ($locInfo [$invNum] ['darkstop']) {
-		 * $sigImageFile = DART_SIG_DIR . 'darkstop.png';
-		 * $hasSignature = true;
-		 * } else {
-		 * $sigImageFile = DART_SIG_DIR . $locInfo [$invNum] ['id'] . '/' . $invNum . '.png';
-		 * $hasSignature = true;
-		 *
-		 * if (! file_exists ( $sigImageFile )) {
-		 * // Get the Azure signature file
-		 * $sigFileName = $invNum . ".png";
-		 * $sigImageFile = SPConsts::TempDir . $sigFileName;
-		 * try {
-		 * $azf = new AzureFileSP ( 'specprodshares' );
-		 * // Write it out
-		 * $azf->getFile ( AFSPConstants::AZURE_SPS_DARTSIG, $locInfo [$invNum] ['id'], $sigFileName, $sigImageFile );
-		 * $hasSignature = true;
-		 * } catch ( SP_Exception $e ) {
-		 * $eMessage = $e->getMessage ();
-		 * $errorTxt = $e->getFile () . " (" . $e->getLine () . ") : " . $eMessage;
-		 * SP_ErrorLogging ( $errorTxt, true, DART_ERROR_LOG, "SPRemote : AZ File : $currentScript" );
-		 * $hasSignature = false;
-		 * }
-		 * }
-		 * }
-		 * if ($hasSignature)
-		 * $pdf->addSignatureImage ( $sigImageFile );
-		 */
 		// Add signer info
 		$pdf->addSigner ( $locInfo [$invNum] ['signer'], $locInfo [$invNum] ['deldate'] );
 		// Add COG info
@@ -593,13 +578,6 @@ if ($pdfMail || $pdfFax) {
 		$outFile = DART_PDF_DIR . $invNum . ".pdf";
 		$pdf->Output ( $outFile, 'F' );
 		$pdf = null;
-	/**
-	 * Azure DART
-	 */
-		/*
-		 * if (! $locInfo [$invNum] ['darkstop'] && $hasSignature)
-		 * unlink ( $sigImageFile );
-		 */
 	}
 }
 
@@ -831,31 +809,8 @@ EOT;
 					} else {
 						$errMsg = "File not sent successfully, moved to flagged folder on vDart:\n$outFile\nfor invoice # " . $loc ['saleID'];
 						SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, $currentScript . " - EDI error" );
-						// flagFTPFile ( $loc ['ediID'], $outFile );
 					}
 				}
-				// Save the outgoing file to the EDI dir
-				// Don't have to do this after Azure move since we're saving the files at the start.
-				/*
-				 * if ($sentSuccessfully) {
-				 * $savePath = EDISPConsts::EDI_SAVE_DIR . $loc ['ediID'] . '\\outgoing\\' . $outFileName;
-				 * if (! copy ( $outFile, $savePath )) {
-				 * $errMsg = "Error saving $outFile to $savePath\nfor invoice # " . $loc ['saleID'];
-				 * SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
-				 * continue;
-				 * }
-				 * if ($adhoc)
-				 * echo "Sent $outFileName for saleID = $saleID\n";
-				 * // Unlink the file if we sent it, otherwise it will sit waiting to be picked up and subsequently deleted.
-				 * if (constant ( 'EDISPConsts::' . $loc ['ediID'] . "_SENDFTP" )) {
-				 * if (! unlink ( $outFile )) {
-				 * $errMsg = "Error unlinking $outFile\nfor invoice # " . $loc ['saleID'];
-				 * SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
-				 * continue;
-				 * }
-				 * }
-				 * }
-				 */
 			}
 			// Need to sleep 2 seconds so we don't overwrite a file
 			sleep ( 2 );
@@ -1023,7 +978,6 @@ if ($r365FTP) {
 			$errMsg = "R365 : FTP CSV error : " . $spe->getMessage ();
 			SP_errorLogging ( $errMsg, true, '', $currentScript . " - R365 error" );
 			dartLogging ( $currentScript, "    R365 FTP Failed : " . implode ( ',', $r365InvoiceList ) );
-			continue;
 		}
 		dartLogging ( $currentScript, "    R365 FTP Sent : " . implode ( ',', $r365InvoiceList ) );
 	}
@@ -1136,11 +1090,13 @@ if ($plateIQMail) {
 					$invPlateIQ->retrieveInvoice ( $loc ['saleID'] );
 					$piqString .= $invPlateIQ->generatePIQOutput ();
 					$piqFilename = $loc ['id'] . '_' . $loc ['saleID'] . '_' . date ( 'ymd_His' ) . '.csv';
-					$piqFile = $invPlateIQ::FTP_DIR . $piqFilename;
+					$piqFile = DART_PLATEIQ_DIR . $piqFilename;
 					$piqFH = fopen ( $piqFile, "w" );
 					fwrite ( $piqFH, $piqString );
 					fclose ( $piqFH );
 					$azb->putBlockBlobFile ( AzureBlobSP::AZURE_STORAGE_FTP_DIR, $invPlateIQ::FILEMAGE_FTP_DIR, $piqFilename, $piqFile );
+					sleep ( 3 );
+					unlink ( $piqFile );
 				} catch ( SP_Exception $spe ) {
 					$errMsg = "PlateIQ : invoice error : " . $spe->getMessage ();
 					SP_errorLogging ( $errMsg, true, '', $currentScript . " - PlateIQ error" );
@@ -1202,7 +1158,8 @@ if ($simple123CSV) {
 	if ($adhoc)
 		echo "Emailing via Simple123...\n";
 	if (count ( $simple123IDs ) > 0) {
-		$s123Filename = $locInfo [$argv [1]] ['id'] . '-invoice-' . date ( 'ymd-His' ) . '.csv';
+		$s123LocID = $simple123IDs[0]['iS123ID'];
+		$s123Filename = $s123LocID . '-invoice-' . date ( 'ymd-His' ) . '.csv';
 		$s123File = SPConsts::TempDir . $s123Filename;
 		$s123FH = fopen ( $s123File, "w" );
 		$firstEntry = true;
@@ -1211,11 +1168,7 @@ if ($simple123CSV) {
 			try {
 				$inv = new InvoiceSP_Simple123 ();
 				$inv->retrieveInvoice ( $loc ['saleID'] );
-				// Check for negative quantities
-				//if ($inv->containsNegativeQuantites ()) {
-				//	$sIDsToEmail [] = $loc ['saleID'];
-				//	continue;
-				//}
+				$inv->locationID = $s123LocID;
 				if ($firstEntry) {
 					fwrite ( $s123FH, $inv->getCSVHeader () . "\n" );
 					$firstEntry = false;
@@ -1235,7 +1188,6 @@ if ($simple123CSV) {
 			$mail->AddAddress ( InvoiceSP_Simple123::EMAIL_RECIPIENT_CSV );
 			if ($debug)
 				$mail->AddBCC ( $debugMail, $debugName );
-			$mail->AddBCC ( $debugMail, $debugName );
 			$mail->Subject = "Specialty Produce Invoice";
 			$mail->AddReplyTo ( "ar@specialtyproduce.com", "Specialty Produce Accounting" );
 			$mail->AddAttachment ( $s123File, $s123Filename );
@@ -1252,7 +1204,7 @@ if ($simple123CSV) {
 			// Put up in Azure
 			// $azb = new AzureBlobSP ( 'specprodstorage', false );
 			// $azb->putBlockBlobFile ( AzureBlobSP::AZURE_STORAGE_FTP_DIR, DART_SIMPLE123_FTP_DIR, $s123Filename, $s123File );
-			// unlink ( $s123File );
+			unlink ( $s123File );
 		}
 		// Any PDFs to email?
 		if (count ( $sIDsToEmail ) > 0) {
@@ -1298,19 +1250,12 @@ if ($qsronlineCSV) {
 				$qsrFile = SPConsts::TempDir . $qsrFilename;
 				file_put_contents ( $qsrFile, $qsrString );
 				$azb->putBlockBlobFile ( AzureBlobSP::AZURE_STORAGE_FTP_DIR, $invQSR::FILEMAGE_FTP_DIR, $qsrFilename, $qsrFile );
-				// Disabled writing to DART FTP folder when QSR updated to Azure FTP
-				// Email 2/12/20 : Re:[## 27812 ##] Specialty Produce FTP server moving
-				// $qsrFile = DART_QSR_DIR . $qsrFilename;
-				// $qsrFH = fopen ( $qsrFile, "w" );
-				// fwrite ( $qsrFH, $qsrString );
-				// fclose ( $qsrFH );
 				sleep ( 3 );
 				unlink ( $qsrFile );
 			}
 		} catch ( SP_Exception $spe ) {
 			$errMsg = "QSROnline :  error : " . $spe->getMessage ();
 			SP_errorLogging ( $errMsg, true, '', $currentScript . " - QSROnline error" );
-			continue;
 		}
 	}
 } else {

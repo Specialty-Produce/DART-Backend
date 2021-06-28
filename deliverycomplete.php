@@ -109,7 +109,14 @@ if ($signerID < 0) {
 // Ignore printed invoice signers
 if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 	// SIGNATURE IMAGE
-	$filedir = DART_SIG_DIR . $jd->deliveryjson->delivery->locationid;
+	$testImageFile = DART_SIG_DIR . 'darkstop.png';
+	if (is_file ( $testImageFile )) {
+		// Azure Storage IS working
+		$filedir = DART_SIG_DIR . $jd->deliveryjson->delivery->locationid;
+	} else {
+		// Azure Storage NOT working
+		$filedir = DART_SIG_BACKUP_DIR . $jd->deliveryjson->delivery->locationid;
+	}
 	if (! is_dir ( $filedir )) {
 		if (! mkdir ( $filedir )) {
 			$errMsg = "DART : Could not create folder for locationID = " . $jd->deliveryjson->delivery->locationid . " : $filedir";
@@ -124,7 +131,6 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 	// Convert the image to 24-bit and save
 	foreach ( $jd->deliveryjson->invoice_list as $invoice ) {
 		$file = $filedir . '/' . $invoice->saleid . ".png";
-		
 		// Create from the encoded string
 		if (! $imgSrc = imagecreatefromstring ( base64_decode ( $invoice->signatureimage ) )) {
 			$errMsg = "Could not create image from signatureimage data, saleID = " . $invoice->saleid . ", code = " . $codeStr;
@@ -165,27 +171,30 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 						$badXML = preg_replace ( '/XXX/', $currentScript . ' : Could not save png image', $badXML );
 						echo $badXML;
 						exit ();
-					} else {
-						// Use AzureFile to write the image
-						try {
-							// Check if location folder exists in Azure
-							$azf = new AzureFileSP ( 'specprodshares' );
-							if (! $azf->checkPathExists ( AFSPConstants::AZURE_SPS_DARTSIG, $jd->deliveryjson->delivery->locationid )) {
-								$azf->createDirectory ( AFSPConstants::AZURE_SPS_DARTSIG, $jd->deliveryjson->delivery->locationid, '' );
-							}
-							$sigFileName = $invoice->saleid . ".png";
-							$filePath = SPConsts::TempDir . $sigFileName;
-							imagepng ( $imgDest, $filePath );
-							$azf->putFile ( AFSPConstants::AZURE_SPS_DARTSIG, $jd->deliveryjson->delivery->locationid, $sigFileName, $filePath );
-							unlink ( $filePath );
-						} catch ( SP_Exception $e ) {
-							dartLogging ( $currentScript, "    Could not save png image", $codeStr );
-							$badXML = preg_replace ( '/XXX/', $currentScript . ' : Could not save png image', $badXML );
-							SP_ErrorLogging ( $e->getMessage (), true, DART_ERROR_LOG, 'DART Azure Sig Dir Error' );
-							echo $badXML;
-							exit ();
-						}
 					}
+					/*
+					 * else {
+					 * // Use AzureFile to write the image
+					 * try {
+					 * // Check if location folder exists in Azure
+					 * $azf = new AzureFileSP ( 'specprodshares' );
+					 * if (! $azf->checkPathExists ( AFSPConstants::AZURE_SPS_DARTSIG, $jd->deliveryjson->delivery->locationid )) {
+					 * $azf->createDirectory ( AFSPConstants::AZURE_SPS_DARTSIG, $jd->deliveryjson->delivery->locationid, '' );
+					 * }
+					 * $sigFileName = $invoice->saleid . ".png";
+					 * $filePath = SPConsts::TempDir . $sigFileName;
+					 * imagepng ( $imgDest, $filePath );
+					 * $azf->putFile ( AFSPConstants::AZURE_SPS_DARTSIG, $jd->deliveryjson->delivery->locationid, $sigFileName, $filePath );
+					 * unlink ( $filePath );
+					 * } catch ( SP_Exception $e ) {
+					 * dartLogging ( $currentScript, " Could not save png image", $codeStr );
+					 * $badXML = preg_replace ( '/XXX/', $currentScript . ' : Could not save png image', $badXML );
+					 * SP_ErrorLogging ( $e->getMessage (), true, DART_ERROR_LOG, 'DART Azure Sig Dir Error' );
+					 * echo $badXML;
+					 * exit ();
+					 * }
+					 * }
+					 */
 				}
 			}
 		}
