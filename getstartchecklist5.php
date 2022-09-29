@@ -11,15 +11,15 @@ $badXML = <<< EOT
 EOT;
 
 /*
-$testXML = <<< EOT
-<?xml version="1.0"?>
-<startchecklist status="failed" code="1" retry="unknown" errmsg="getstartchecklist.php : Database error, see dart_errors log (TEST).">
-</startchecklist>
-EOT;
+ $testXML = <<< EOT
+ <?xml version="1.0"?>
+ <startchecklist status="failed" code="1" retry="unknown" errmsg="getstartchecklist.php : Database error, see dart_errors log (TEST).">
+ </startchecklist>
+ EOT;
 
-echo $testXML;
-exit();
-*/
+ echo $testXML;
+ exit();
+ */
 
 try {
 	$dbh = new PDO ( 'spdb', '', '' );
@@ -41,17 +41,19 @@ $checklistXML = <<< EOT
 <?xml version="1.0"?>
 <startchecklist status="success">
 <checklisthtml>
-<![CDATA[<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" dir="ltr" lang="en">
-<head>
+<![CDATA[<!DOCTYPE html>
+<html lang="en-us">
+<title>Start Checklist</title>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-<style type="text/css">
+<style>
 body {
 	font-family: Verdana, Arial, Helvetica, Sans-Serif;
 	font-size: 1.1em;
 }
 table {
 	margin: 0px;
+	border-spacing: 0px;
+    border-collapse: collapse;
 }
 th {
 	text-align: left;
@@ -60,22 +62,25 @@ th {
 .tdcb {
 	padding: 0 5px 0 10px;
 }
+td { 
+    padding: 0px;
+}
 </style>
-<script type="text/javascript">
+<script>
 function validate_form() {
-	var errStr = '';
-	if (document.clform.vehicle.value.split(':')[0] == '0') errStr = errStr + "\\u2022 You must select a vehicle.\\n";
-	// Strip leading zeros
-	document.clform.odometer.value = document.clform.odometer.value.replace(/^0+/, '');
-	if (chkNumeric(document.clform.odometer.value) == false) errStr = errStr + "\\u2022 Please enter a valid odometer reading.\\n";
-	if (chkNumeric(document.clform.odometer.value)) {
-		var oldodometer = parseInt(document.clform.vehicle.value.split(':')[2]);
-		var newodometer = parseInt(document.clform.odometer.value);
-		if (newodometer < oldodometer) errStr = errStr + "\\u2022 The odometer reading you entered is less than the last recorded one in the system (" + oldodometer + ").\\n";
-	}
-	if (document.clform.testschecked.checked != true) errStr = errStr + "\\u2022 You must check that you reviewed all the test items.\\n";
-	if (errStr == '') return 'success';
-	else return errStr;
+var errStr = '';
+if (document.clform.vehicle.value.split(':')[0] == '0') errStr = errStr + "\u2022 You must select a vehicle.";
+// Strip leading zeros
+document.clform.odometer.value = document.clform.odometer.value.replace(/^0+/, '');
+if (chkNumeric(document.clform.odometer.value) == false) { errStr = errStr + "\u2022 Please enter a valid odometer reading.";}
+if (chkNumeric(document.clform.odometer.value)) {
+var oldodometer = parseInt(document.clform.vehicle.value.split(':')[2]);
+var newodometer = parseInt(document.clform.odometer.value);
+if (newodometer < oldodometer) errStr = errStr + "\u2022 The odometer reading you entered is less than the last recorded one in the system (" + oldodometer + ").";
+}
+if (document.clform.testschecked.checked != true) {errStr = errStr + "\u2022 You must check that you reviewed all the test items.";}
+if (errStr == '') {return 'success';}
+else {return errStr;}
 }
 function encode_form() {
     // Truck and odometer
@@ -86,66 +91,66 @@ function encode_form() {
     evStr += "'test_items':[";
     var testItems = document.clform.test_list;
     var notFirstItem = false;
-	for (i = 0; i < testItems.length; i++)
-		if (testItems[i].checked == true) {
-			if (notFirstItem) evStr += ",";
-			else notFirstItem = true;
-			evStr += "'" + testItems[i].value + "'";
-	}
-	evStr += "],";
+for (i = 0; i < testItems.length; i++)
+if (testItems[i].checked == true) {
+if (notFirstItem) evStr += ",";
+else notFirstItem = true;
+evStr += "'" + testItems[i].value + "'";
+}
+evStr += "],";
 
-	// Test comments
-	// evStr += "'comments':'" + encodeURIComponent(document.clform.comments.value) + "'}";
-	evStr += "'comments':''}";
+// Test comments
+// evStr += "'comments':'" + encodeURIComponent(document.clform.comments.value) + "'}";
+evStr += "'comments':''}";
         
     eval(evStr);
     var encStr = JSON.stringify(encData);
     return encStr;
 }
 function getodometer() {
-	return document.clform.odometer.value;
+return document.clform.odometer.value;
 }
 function templogvehicle() {
-	if (document.clform.vehicle.value.split(':')[1] == 0)
-		return 'false';
-	else
-		return 'true';
+if (document.clform.vehicle.value.split(':')[1] == 0)
+return 'false';
+else
+return 'true';
 }
 //check for valid numeric string
 function chkNumeric(strString) {
-	var strValidChars = "0123456789";
-	var strChar;
-	var blnResult = true;
+var strValidChars = "0123456789";
+var strChar;
+var blnResult = true;
 
-	if (strString.length == 0) return false;
+if (strString.length == 0) return false;
 
-	//test strString consists of valid characters listed above
-	for (i = 0; i < strString.length && blnResult == true; i++) {
-		strChar = strString.charAt(i);
-		if (strValidChars.indexOf(strChar) == -1) {
-			blnResult = false;
-		}
-	}
-	return blnResult;
+//test strString consists of valid characters listed above
+for (i = 0; i < strString.length && blnResult == true; i++) {
+strChar = strString.charAt(i);
+if (strValidChars.indexOf(strChar) == -1) {
+blnResult = false;
+}
+}
+return blnResult;
 }
 // Put up a helpful string about the last info entered, in the event of a crash
 function getOdometerString() {
-	var odoString = "Last reported odometer reading for ";
-	odoString += document.clform.vehicle.options[document.clform.vehicle.selectedIndex].text;
-	odoString += " was ";
-	odoString += document.clform.odometer.value;
-	odoString += ".";
-	return odoString;
+var odoString = "Last reported odometer reading for ";
+odoString += document.clform.vehicle.options[document.clform.vehicle.selectedIndex].text;
+odoString += " was ";
+odoString += document.clform.odometer.value;
+odoString += ".";
+return odoString;
 }
 function setOdometerString(odoString) {
-	document.getElementById("lastodometer").style.display = "block";
-	document.getElementById("lastodometer").innerHTML = odoString;
-	return true;
+document.getElementById("lastodometer").style.display = "block";
+document.getElementById("lastodometer").innerHTML = odoString;
+return true;
 }
 </script>
 </head>
 <body>
-<form action="" method="post" name="clform">
+<form action="." method="post" name="clform">
 1. Which vehicle are you using? 
 	<select name="vehicle">
 		<option value="0:0:0">Select...</option>
@@ -165,7 +170,7 @@ $checklistXML .= <<< EOT
 3. Start the engine and test the following.  Check anything that <b>needs attention</b>.<br/>
 <fieldset style="margin: 10px 10px 10px 20px; padding: 0 10px; display: inline-block;">
 <div style="float: left;">
-<table cellpadding="0" cellspacing="0" border="0">
+<table>
 <tr>
 	<th colspan="2">Gauges</th>
 </tr>
@@ -230,7 +235,7 @@ $checklistXML .= <<< EOT
 </table>
 </div>
 <div style="float: left; margin-left: 20px;">
-<table cellpadding="0" cellspacing="0" border="0">
+<table>
 <tr>
 	<th colspan="2">Noises (unusual)</th>
 </tr>

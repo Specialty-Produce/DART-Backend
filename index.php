@@ -1,3 +1,7 @@
+<?php
+include_once 'global_CDC.php';
+include 'dart_init.php';
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,7 +9,7 @@
 <title>DART Index Page</title>
 </head>
 <body>
-<h3>DART Index Page</h3>
+<h3>azDART Index Page</h3>
 <?php echo date('m/d/y H:i:s'); ?>
 <p>Your IP : <?php echo $_SERVER['REMOTE_ADDR']; ?></p>
 PHP Version : <?php echo phpversion(); ?>
@@ -14,8 +18,6 @@ PHP Version : <?php echo phpversion(); ?>
 	$dbh = new PDO ( 'spdb', '', '' );
 	// set the error reporting attribute.
 	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-	
-	// $sql = "uspDARTLogin '$username', '$password', '$udid', '$version', '$deviceName', '$token'";
 	
 	$sql = "select @@VERSION as VersionInfo";
 	$stmt = $dbh->query ( $sql );
@@ -31,7 +33,7 @@ PHP Version : <?php echo phpversion(); ?>
 echo $versionInfo;
 ?></p>
 <?php
-$sigImageFile = '/home/site/dartsigs/darkstop.png';
+$sigImageFile = DART_SIG_DIR . 'darkstop.png';
 $sigData = file_get_contents($sigImageFile);
 $base64 = 'data:image/png;base64,' . base64_encode($sigData);
 ?>

@@ -116,6 +116,7 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 	} else {
 		// Azure Storage NOT working
 		$filedir = DART_SIG_BACKUP_DIR . $jd->deliveryjson->delivery->locationid;
+		SP_ErrorLogging ( "Azure storage NOT working : $testImageFile", true, DART_ERROR_LOG, "DART : Azure storage NOT working : $currentScript" );
 	}
 	if (! is_dir ( $filedir )) {
 		if (! mkdir ( $filedir )) {
@@ -172,29 +173,6 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 						echo $badXML;
 						exit ();
 					}
-					/*
-					 * else {
-					 * // Use AzureFile to write the image
-					 * try {
-					 * // Check if location folder exists in Azure
-					 * $azf = new AzureFileSP ( 'specprodshares' );
-					 * if (! $azf->checkPathExists ( AFSPConstants::AZURE_SPS_DARTSIG, $jd->deliveryjson->delivery->locationid )) {
-					 * $azf->createDirectory ( AFSPConstants::AZURE_SPS_DARTSIG, $jd->deliveryjson->delivery->locationid, '' );
-					 * }
-					 * $sigFileName = $invoice->saleid . ".png";
-					 * $filePath = SPConsts::TempDir . $sigFileName;
-					 * imagepng ( $imgDest, $filePath );
-					 * $azf->putFile ( AFSPConstants::AZURE_SPS_DARTSIG, $jd->deliveryjson->delivery->locationid, $sigFileName, $filePath );
-					 * unlink ( $filePath );
-					 * } catch ( SP_Exception $e ) {
-					 * dartLogging ( $currentScript, " Could not save png image", $codeStr );
-					 * $badXML = preg_replace ( '/XXX/', $currentScript . ' : Could not save png image', $badXML );
-					 * SP_ErrorLogging ( $e->getMessage (), true, DART_ERROR_LOG, 'DART Azure Sig Dir Error' );
-					 * echo $badXML;
-					 * exit ();
-					 * }
-					 * }
-					 */
 				}
 			}
 		}
@@ -306,6 +284,7 @@ while ( $sqlFailed ) {
 		// We need to build the list of invoices that have lastupdatetime values different between database and ipad
 		$updateAtDeliveryFailXML = '';
 		$saleDetailXML = '';
+		$saleXML = '';
 		foreach ( $jd->deliveryjson->invoice_list as $invoice ) {
 			$getAllLines = false;
 			if ($invoice->lastupdatetime != $invTimesDB [$invoice->saleid]) {
@@ -317,6 +296,10 @@ while ( $sqlFailed ) {
 					$editReason = (isset ( $line->editreason )) ? $line->editreason : '';
 					$saleDetailXML .= '<Rec rID="' . $line->lineid . '" iUnitID="' . $line->finalunitid . '" fQty="' . $line->finalqship . '" mUnitPrice="' . $line->finalunitprice . '" iStatus= "' . $editReason . '"/>' . "\n";
 				}
+			}
+			// Green Discount Updates
+			if ($invoice->greendiscountchanged == "true" || $getAllLines) {
+				$saleXML .= '<Rec rID="' . $invoice->saleid . '" mUnitPrice="' . $invoice->greendiscountfinal . '"/>' . "\n";
 			}
 		}
 		
@@ -335,6 +318,15 @@ while ( $sqlFailed ) {
 			$sql = "uspDARTUpdateAtDeliveryFail '" . $updateAtDeliveryFailXML . "'";
 			$resultDeliveryFail = $dbh->exec ( $sql );
 		}
+		$resultUpdateGreenDiscount = true;
+		/*
+		if ($saleXML != '') {
+			$saleXML = "<ROOT>\n" . $saleXML . "</ROOT>";
+			dartLogging ( $currentScript, "    $saleXML=" . $saleXML, $codeStr );
+			$sql = "uspDARTDeliveryCompleteUpdatesGreenDiscount '" . $saleXML . "'";
+			$resultUpdateGreenDiscount = $dbh->exec ( $sql );
+		}
+		*/
 		
 		$dbh = null;
 	} catch ( PDOException $e ) {
@@ -386,6 +378,15 @@ if ($resultUpdateChanges === false) {
 
 if ($resultDeliveryFail === false) {
 	$errMsg = "uspDARTUpdateAtDeliveryFail $updateAtDeliveryFailXML returned FALSE : $codeStr";
+	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
+	dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
+	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
+	echo $badXML;
+	exit ();
+}
+
+if ($resultUpdateGreenDiscount === false) {
+	$errMsg = "uspDARTDeliveryCompleteUpdatesGreenDiscount $saleXML returned FALSE : $codeStr";
 	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
 	dartLogging ( $currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr );
 	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );

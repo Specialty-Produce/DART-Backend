@@ -38,6 +38,22 @@ if (preg_match ( '/adhoc/', $currentScript ))
 else
 	$adhoc = false;
 
+// Are we coming via a GET
+$getSaleID = filter_input ( INPUT_GET, 'sid', FILTER_VALIDATE_INT );
+if ($getSaleID != null && $getSaleID !== false) {
+	// Make sure we have a valid API key
+	$incomingHeaders = getallheaders ();
+	if (! isset ( $incomingHeaders ['X-API-Key'] ) || $incomingHeaders ['X-API-Key'] != DART_SENDINVOICE_API_KEY) {
+		SP_ErrorLogging ( "$currentScript : GET sid sent, $getSaleID, but invalid X-API-Key", true, DART_ERROR_LOG );
+	} else {
+		$argv = array (
+				'sendinvoice.php',
+				$getSaleID 
+		);
+		error_log ( "$currentScript : GET sid : $getSaleID" );
+	}
+}
+
 $debug = false;
 /* XXX */
 $debugMail = 'christopher@specialtyproduce.com';
@@ -86,6 +102,11 @@ if ($adhoc) {
 	$qsronlineCSV = false;
 }
 
+if (count ( $argv ) == 1) {
+	SP_ErrorLogging ( "$currentScript : Called without arguments", true, DART_ERROR_LOG );
+	exit ();
+}
+
 $useCOG = false;
 
 // Get the information on the location associated with these invoices
@@ -99,7 +120,8 @@ $hulaID = 0;
 $r365Data = array ();
 $bevagerIDs = array ();
 $cheftecEmails = array ();
-$plateIQEmail = '';
+$plateIQEmailAddress = '';
+$plateIQPODefault = '';
 $simple123IDs = array ();
 $qsronlineIDs = array ();
 $pppEmails = array ();
@@ -163,7 +185,8 @@ while ( $sqlFailed ) {
 					'greenYTD' => $row ['mYTD'],
 					'ediID' => $ediID,
 					'parentFTP' => $parentFTP,
-					'showProdID' => $showProdID 
+					'showProdID' => $showProdID,
+					'isCloverTransaction' => ($row ['bIsCloverTransaction'] == - 1) 
 			);
 		}
 		$stmt->closeCursor ();
@@ -223,7 +246,7 @@ while ( $sqlFailed ) {
 		// RSI ID
 		$stmt = $dbh->query ( "SELECT iRSIID FROM tblDartInvoiceSendRSI WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
 		$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-		$rsiID = ($result ['iRSIID'] > 0) ? $result ['iRSIID'] : 0;
+		$rsiID = (is_bool ( $result ) && $result === false) ? 0 : (($result ['iRSIID'] > 0) ? $result ['iRSIID'] : 0);
 		$stmt->closeCursor ();
 		if ($adhoc) {
 			if ($debug) {
@@ -234,7 +257,7 @@ while ( $sqlFailed ) {
 		// Hula ID
 		$stmt = $dbh->query ( "SELECT iLocationID FROM tblDartInvoiceSendHula WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
 		$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-		$hulaID = ($result ['iLocationID'] > 0) ? $result ['iLocationID'] : 0;
+		$hulaID = (is_bool ( $result ) && $result === false) ? 0 : (($result ['iLocationID'] > 0) ? $result ['iLocationID'] : 0);
 		$stmt->closeCursor ();
 		if ($adhoc) {
 			if ($debug) {
@@ -245,7 +268,7 @@ while ( $sqlFailed ) {
 		// Profit Pro Plus
 		$stmt = $dbh->query ( "SELECT iLocationID, tEmails FROM tblDartInvoiceSendProfitProPlus WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
 		$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-		$pppEmails = ($result ['iLocationID'] > 0) ? explode ( ',', $result ['tEmails'] ) : array ();
+		$pppEmails = (is_bool ( $result ) && $result === false) ? array () : (($result ['iLocationID'] > 0) ? explode ( ',', $result ['tEmails'] ) : array ());
 		$stmt->closeCursor ();
 		if ($adhoc) {
 			if ($debug) {
@@ -281,7 +304,7 @@ while ( $sqlFailed ) {
 		// Cheftec
 		$stmt = $dbh->query ( "SELECT iLocationID, tEmails FROM tblDartInvoiceSendCheftec WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
 		$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-		$cheftecEmails = ($result ['iLocationID'] > 0) ? explode ( ',', $result ['tEmails'] ) : array ();
+		$cheftecEmails = (is_bool ( $result ) && $result === false) ? array () : (($result ['iLocationID'] > 0) ? explode ( ',', $result ['tEmails'] ) : array ());
 		$stmt->closeCursor ();
 		if ($adhoc) {
 			if ($debug) {
@@ -295,9 +318,10 @@ while ( $sqlFailed ) {
 		}
 		
 		// PlateIQ
-		$stmt = $dbh->query ( "SELECT iLocationID, sEmail FROM tblDartInvoiceSendPlateIQ WHERE iLocationID=" . $locInfo [$argv [1]] ['id'] );
+		$stmt = $dbh->query ( "SELECT iLocationID, sEmail, sPODefault FROM tblDartInvoiceSendPlateIQ WHERE bSummaryOnly=0 and iLocationID=" . $locInfo [$argv [1]] ['id'] );
 		$result = $stmt->fetch ( PDO::FETCH_ASSOC );
-		$plateIQEmailAddress = ($result ['iLocationID'] > 0) ? $result ['sEmail'] : '';
+		$plateIQEmailAddress = (is_bool ( $result ) && $result === false) ? '' : (($result ['iLocationID'] > 0) ? $result ['sEmail'] : '');
+		$plateIQPODefault = (is_bool ( $result ) && $result === false) ? '' : (($result ['iLocationID'] > 0) ? $result ['sPODefault'] : '');
 		$stmt->closeCursor ();
 		if ($adhoc) {
 			if ($debug) {
@@ -416,7 +440,8 @@ if ($pdfMail || $pdfFax) {
 								'unitPrice' => sprintf ( "%0.2f", $itemTotal ),
 								'itemTotal' => $itemTotal,
 								'status' => '',
-								'cogAccount' => $cogAccount 
+								'cogAccount' => $cogAccount,
+								'itemNotes' => '' 
 						);
 					else
 						$lineItems [] = array (
@@ -427,7 +452,8 @@ if ($pdfMail || $pdfFax) {
 								'itemTotal' => $itemTotal,
 								'status' => $row ['Status'],
 								'prodID' => $row ['iProductID'],
-								'cogAccount' => $cogAccount 
+								'cogAccount' => $cogAccount,
+								'itemNotes' => trim ( $row ['sItemNotes'] ) 
 						);
 				}
 				$stmt->closeCursor ();
@@ -482,7 +508,7 @@ if ($pdfMail || $pdfFax) {
 		if ($useCOG)
 			usort ( $lineItems, 'sortLineItems' );
 		
-		$pdf = new invoicePDF ();
+		$pdf = new invoicePDF ( $locInfo [$invNum] ['isCloverTransaction'] );
 		$pdf->setLocation ( $locInfo [$invNum] ['name'], $locInfo [$invNum] ['address'], $locInfo [$invNum] ['city'], $locInfo [$invNum] ['state'], $locInfo [$invNum] ['zip'], formatPhone ( $locInfo [$invNum] ['phone'] ) );
 		$pdf->setInvoiceHeader ( $invNum, $locInfo [$invNum] ['shipdate'], $locInfo [$invNum] ['salesperson'], formatPhone ( $locInfo [$invNum] ['salesphone'] ), $locInfo [$invNum] ['po'], $locInfo [$invNum] ['terms'] );
 		if ($locInfo [$invNum] ['showProdID'])
@@ -495,7 +521,7 @@ if ($pdfMail || $pdfFax) {
 				$cogLastAccount = $line ['cogAccount'];
 				$pdf->addCOGAccountLine ( $cogLastAccount . ' - ' . $cogLocation [$cogLastAccount] ['description'] );
 			}
-			$pdf->addLineItem ( $line ['description'], $line ['ordered'], $line ['shipped'], $line ['unitPrice'], $line ['itemTotal'], $line ['status'], $line ['prodID'] );
+			$pdf->addLineItem ( $line ['description'], $line ['ordered'], $line ['shipped'], $line ['unitPrice'], $line ['itemTotal'], $line ['status'], $line ['prodID'], $line ['itemNotes'] );
 		}
 		// Invoice Total
 		if ($pdf->checkNoSpaceLeft ( 0.2 ))
@@ -517,6 +543,7 @@ if ($pdfMail || $pdfFax) {
 			} else {
 				// Azure Storage NOT working
 				$sigImage = DART_SIG_BACKUP_DIR . $locInfo [$invNum] ['id'] . '/' . $invNum . '.png';
+				SP_ErrorLogging ( "Azure storage NOT working : $testImageFile", true, DART_ERROR_LOG, "DART : Azure storage NOT working : $currentScript" );
 			}
 		}
 		$pdf->addSignatureImage ( $sigImage );
@@ -763,7 +790,7 @@ EOT;
 					}
 				}
 				// Send the PO
-				include_once 'EDI_SP\Receivers\\' . $loc ['ediID'] . '\ts810.php';
+				include_once 'EDI_SP/Receivers/' . $loc ['ediID'] . '/ts810.php';
 				$tsFunction = $loc ['ediID'] . '_810';
 				list ( $success, $msg ) = $tsFunction ( $loc ['saleID'] );
 				if (! $success) {
@@ -781,8 +808,11 @@ EOT;
 				$outFileName = 'O_SP_' . date ( 'ymd_His' ) . '_' . $loc ['saleID'] . '.810';
 				$outPath = EDISPConsts::EDI_BACKUP;
 				$outPath .= (strlen ( $loc ['parentFTP'] ) > 0) ? $loc ['parentFTP'] . '/' : '';
-				$outPath .= $loc ['ediID'] . '/outgoing/';
-				$outFile = $outPath . $outFileName;
+				$outPath .= $loc ['ediID'] . '/outgoing';
+				if (! is_dir ( $outPath )) {
+					$success = mkdir ( $outPath, 0777, true );
+				}
+				$outFile = $outPath . '/' . $outFileName;
 				if (! file_put_contents ( $outFile, $msg )) {
 					$errMsg = "Error writing outgoing 810 : $outFile" . "\nfor invoice # " . $loc ['saleID'];
 					SP_errorLogging ( $errMsg, true, EDISPConsts::EDI_ERROR_LOG, $currentScript . " - EDI error" );
@@ -1084,6 +1114,7 @@ if ($plateIQMail) {
 		try {
 			$azb = new AzureBlobSP ( 'specprodstorage', false );
 			$invPlateIQ = new InvoicePlateIQ ();
+			$invPlateIQ->PODefault = $plateIQPODefault;
 			foreach ( $locInfo as $loc ) {
 				try {
 					$piqString = $invPlateIQ->getPIQHeader ();
@@ -1112,6 +1143,7 @@ if ($plateIQMail) {
 			$plateIQFile = DART_PLATEIQ_DIR . $plateIQFilename;
 			$plateIQFH = fopen ( $plateIQFile, "w" );
 			$invPlateIQ = new InvoicePlateIQ ();
+			$invPlateIQ->PODefault = $plateIQPODefault;
 			$piqString = $invPlateIQ->getPIQHeader ();
 			foreach ( $locInfo as $loc ) {
 				try {
@@ -1137,7 +1169,7 @@ if ($plateIQMail) {
 			$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " . $locInfo [$argv [1]] ['name'] . "\n - Specialty Produce System";
 			// Send the email
 			if (! $mail->Send ()) {
-				$errMsg = "PlateIQ : Send mail error : " . $plateIQEmail;
+				$errMsg = "PlateIQ : Send mail error : " . $plateIQEmailAddress;
 				SP_errorLogging ( $errMsg, true, '', $currentScript . " - RSI error" );
 			}
 			$mail->ClearAttachments ();
@@ -1158,8 +1190,8 @@ if ($simple123CSV) {
 	if ($adhoc)
 		echo "Emailing via Simple123...\n";
 	if (count ( $simple123IDs ) > 0) {
-		$s123LocID = $simple123IDs[0]['iS123ID'];
-		$s123Filename = $s123LocID . '-invoice-' . date ( 'ymd-His' ) . '.csv';
+		$s123LocID = $simple123IDs [0] ['iS123LocID'];
+		$s123Filename = $s123LocID . '-invoice-' . date ( 'ymd-His' ) . '-' . $locInfo [$argv [1]] ['id'] . '.csv';
 		$s123File = SPConsts::TempDir . $s123Filename;
 		$s123FH = fopen ( $s123File, "w" );
 		$firstEntry = true;
@@ -1168,7 +1200,7 @@ if ($simple123CSV) {
 			try {
 				$inv = new InvoiceSP_Simple123 ();
 				$inv->retrieveInvoice ( $loc ['saleID'] );
-				$inv->locationID = $s123LocID;
+				$inv->resetLocationID ( $s123LocID );
 				if ($firstEntry) {
 					fwrite ( $s123FH, $inv->getCSVHeader () . "\n" );
 					$firstEntry = false;

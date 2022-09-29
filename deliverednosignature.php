@@ -277,7 +277,7 @@ $mail->addAddress ( $notifyEmail );
 $mail->addBCC("christopher@specialtyproduce.com");
 $sigLinks = '';
 foreach ( $jd->deliveryjson->invoice_list as $invoice ) {
-	$link = 'https://dart.specialtyproduce.com/websign/index.php?sid=' . urlencode ( simple_openssl_encrypt ( $invoice->saleid ) );
+	$link = 'https://azdart.specialtyproduce.com/websign/index.php?sid=' . urlencode ( simple_openssl_encrypt ( $invoice->saleid ) );
 	$sigLinks .= $invoice->saleid . ' : <a clicktracking=off href="' . $link . '" target="_blank">' . $link . "</a><br/>";
 }
 $mail->Body = "Dear Sir or Madam,

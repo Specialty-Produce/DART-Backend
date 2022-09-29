@@ -1,6 +1,7 @@
 <?php
 include_once 'global_CDC.php';
 include_once 'classes_SP/class_ADP_SP.php';
+require_once 'classes_SP/class_PHPMailerSP.php';
 include 'dart_init.php';
 $currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
 
@@ -85,10 +86,21 @@ if ($result === false) {
 try {
 	$badgeID = ADP_SP::getEmployeeBadgeID ( $userid );
 	$punchResult = ADP_SP::submitPunch ( $badgeID, 'lunchout', date ( 'c', strtotime ( $starttime ) ) );
-	//SP_ErrorLogging ( "$currentScript : Submit to ADP : $badgeID : $punchResult", true, DART_ERROR_LOG, 'ADP Submit : lunchout' );
+	// SP_ErrorLogging ( "$currentScript : Submit to ADP : $badgeID : $punchResult", true, DART_ERROR_LOG, 'ADP Submit : lunchout' );
 } catch ( SP_Exception $e ) {
 	$errMsg = "ADP Error : " . $e->getMessage ();
-	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
+	$errMsg .= "\nUserID : $userid -- BadgeID : $badgeID -- Start Time : $starttime";
+	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, 'ADP Submit Punch Error' );
+	// Email HR
+	$mail = new PHPMailerSP ();
+	$mail->setApiKey ( 'hr' );
+	$mail->isHTML ( false );
+	$mail->FromName = "SP System";
+	$mail->From = "itadmin@specialtyproduce.com";
+	$mail->Subject = "ADP Punch Submit Error";
+	$mail->Body = "There was an error submitting a DART Lunch START to ADP.\n\nUserID : $userid -- BadgeID : $badgeID -- Start Time : $starttime";
+	$mail->AddAddress ( "adppuncherrors@specialtyproduce.com" );
+	$mail->Send ();
 }
 
 // Generate the XML

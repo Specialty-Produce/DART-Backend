@@ -20,6 +20,8 @@ EOT;
 // Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
 $codeStr = generateRandomCode ( 6 );
 
+dartLogging ( $currentScript, " Start...", $codeStr );
+
 // TODO : CRC check
 // jsonCRC32
 
@@ -78,7 +80,7 @@ while ( $sqlFailed ) {
 		$dbh = new PDO ( 'spdb', '', '' );
 		$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
 		
-		$sql = "uspDARTDeliveryPicture '" . $invXML . "'";
+		$sql = "uspDARTDeliveryPicture '" . $invXML . "'"; // tblDARTDeliveryPicture
 		$stmt = $dbh->query ( $sql );
 		$returnSet = $stmt->fetch ( PDO::FETCH_BOTH );
 		$iPicTrackID = $returnSet ['iPicTrackID'];
@@ -145,16 +147,7 @@ if (! imagecopy ( $imgDest, $imgSrc, 0, 0, 0, 0, $width, $height )) {
 try {
 	$azb = new AzureBlobSP ( 'specprodstorage' );
 	imagepng ( $imgDest, $filePath );
-	if ($jd->pictype == 'poorquality')
-		$azb->putBlockBlobFile ( AzureBlobSP::AZURE_STORAGE_DART_DELIVERY_PICS_DIR, '', $fileName, $filePath );
-	else {
-		$errMsg = "Invalid pictype : " . $jd->pictype . ", code = " . $codeStr;
-		SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
-		dartLogging ( $currentScript, "    Invalid pic type", $codeStr );
-		$badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid pic type', $badXML );
-		echo $badXML;
-		exit ();
-	}
+	$azb->putBlockBlobFile ( AzureBlobSP::AZURE_STORAGE_DART_DELIVERY_PICS_DIR, '', $fileName, $filePath );
 	unlink ( $filePath );
 } catch ( SP_Exception $e ) {
 	$errMsg = $e->getMessage ();

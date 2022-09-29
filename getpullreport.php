@@ -55,7 +55,7 @@ foreach ( $pullReport as $entry ) {
     $resultStr .= '<item rowcolor="' . $pullColors[$colorCode] . '">' . "\n";
 	$resultStr .= "<description>" . mb_convert_encoding ( $entry['sDescription'], "UTF-8", "Windows-1252" ) . "</description>\n";
 	$resultStr .= "<productid>" . $entry['iProductID'] . "</productid>\n";
-	$resultStr .= "<quantity>" . $entry['Qty'] . "</quantity>\n";
+	$resultStr .= "<quantity>" . sprintf('%0.2f', $entry['Qty']) . "</quantity>\n";
 	$resultStr .= "<master>" . $entry['MasterLocation'] . "</master>\n";
 	$resultStr .= "<location>" . $entry['Location'] . "</location>\n";
 	$resultStr .= "</item>\n";

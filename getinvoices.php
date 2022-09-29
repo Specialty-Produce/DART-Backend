@@ -142,7 +142,7 @@ foreach ( $invInfo as $item ) {
 				'qship' => $item ['fShipQuantity'],
 				'status' => mb_convert_encoding ( $item ['iShort'], "UTF-8", "Windows-1252" ),
 				'itemspec' => mb_convert_encoding ( $item ['sItemNotes'], "UTF-8", "Windows-1252" ),
-				'greendiscount' => sprintf ( "%0.4f", ($item ['fDiscountOnline'] + $item ['fDiscountOnTime']) ) 
+				'greendiscount' => sprintf ( "%0.2f", 100.0 * ($item ['fDiscountOnline'] + $item ['fDiscountOnTime']) ) 
 		);
 }
 

@@ -26,6 +26,7 @@ foreach ( $invoiceList as $inv ) {
 		$resultStr .= "<qship>" . sprintf ( '%0.2f', $item ['qship'] ) . "</qship>\n";
 		$resultStr .= "<status>" . $item ['status'] . "</status>\n";
 		$resultStr .= "<itemspec>" . $item ['itemspec'] . "</itemspec>\n";
+		$resultStr .= "<greendiscount>" . $item ['greendiscount'] . "</greendiscount>\n";
 		$resultStr .= "<pricing_unit_list>\n";
 		foreach ( $priceList [$item ['lineid']] as $unitID => $entry ) {
 			$resultStr .= '<unit id="' . $unitID . '">' . "\n";

@@ -11,7 +11,9 @@ define ( "DELIVERY_NO_SIGNATURE_ID", 96107 );
 // Logging
 define ( "DART_ERROR_LOG", "dart_errors" );
 define ( "DART_REPORTING", "dart_reporting" );
+define ( "DART_STATUS", "dart_status" );
 define ( "DART_LOG_DIR", "/home/site/wwwroot/logs/" );
+define ( "DART_LOG_ARCHIVE_DIR", "/home/site/wwwroot/logs/archive/" );
 
 // Invoice-related
 define ( "DART_SIG_DIR", "/home/site/dartsigs/" );
@@ -21,6 +23,7 @@ define ( "DART_RSI_DIR", "/home/site/Temp/invoiceRSIs/" );
 define ( "DART_PPP_DIR", "/home/site/Temp/invoicePPPs/" );
 define ( "DART_PLATEIQ_DIR", "/home/site/Temp/invoicePlateIQs/" );
 define ( "DART_CT_DIR", "/home/site/Temp/invoiceCTs/" );
+define ( "DART_PTF_LOG_DIR", "/home/site/Temp/PTFLogs/" );
 
 // Kludge to have users never get invoices
 define ( "DONT_SEND_INVOICE_EMAIL", "dontsendinvoices@specialtyproduce.com" );
@@ -32,6 +35,9 @@ define ( "DART_SQL_TIMEOUT_MAX_TRIES", 3 );
 // Error Codes
 define ( "DART_ERR_NONE", 0 );
 define ( "DART_ERR_SQL_DB_TIMEOUT", 1 );
+
+// Sendinvoice API
+define ( "DART_SENDINVOICE_API_KEY", 'abcd1234*' );
 
 // Functions
 function dartLogging($webservice, $data, $code = '') {
