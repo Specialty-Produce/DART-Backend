@@ -9,7 +9,7 @@ include 'dart_init.php';
 <title>DART Index Page</title>
 </head>
 <body>
-<h3>azDART Index Page</h3>
+<h3>azDART Index Pagexxx</h3>
 <?php echo date('m/d/y H:i:s'); ?>
 <p>Your IP : <?php echo $_SERVER['REMOTE_ADDR']; ?></p>
 PHP Version : <?php echo phpversion(); ?>
