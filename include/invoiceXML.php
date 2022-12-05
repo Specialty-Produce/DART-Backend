@@ -32,6 +32,7 @@ foreach ( $invoiceList as $inv ) {
 			$resultStr .= '<unit id="' . $unitID . '">' . "\n";
 			$resultStr .= "<desc>" . $entry ['desc'] . "</desc>\n";
 			$resultStr .= "<cost>" . sprintf ( '%0.2f', $entry ['cost'] ) . "</cost>\n";
+			// <crvinfo conversion="24" id="10525">0.05</crvinfo>
 			$resultStr .= '</unit>' . "\n";
 		}
 		$resultStr .= "</pricing_unit_list>\n";
@@ -40,4 +41,3 @@ foreach ( $invoiceList as $inv ) {
 	$resultStr .= "</invoice_item_list>\n";
 	$resultStr .= "</invoice>\n";
 }
-?>

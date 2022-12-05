@@ -1,7 +1,7 @@
 <?php
 include_once 'global_CDC.php';
 include 'dart_init.php';
-$currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
+$currentScript = basename($_SERVER["SCRIPT_NAME"]);
 
 // On various errors and failures, we'll use the status BAD update XML
 $badXML = <<< EOT
@@ -11,63 +11,68 @@ $badXML = <<< EOT
 EOT;
 
 // Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
-$codeStr = generateRandomCode ( 6 );
+$codeStr = generateRandomCode(6);
 
 // Log the data
-$postData = (isset ( $_POST )) ? serialize ( $_POST ) : 'none';
-dartLogging ( $currentScript, "postdata=" . $postData, $codeStr );
+$postData = (isset($_POST)) ? serialize($_POST) : 'none';
+dartLogging($currentScript, "postdata=" . $postData, $codeStr);
 
 // User ID
-$userid = filter_input ( INPUT_POST, 'userid', FILTER_SANITIZE_NUMBER_INT );
-if ($userid == FALSE || is_null ( $userid )) {
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid User ID', $badXML );
+$userid = filter_input(INPUT_POST, 'userid', FILTER_SANITIZE_NUMBER_INT);
+if ($userid == FALSE || is_null($userid)) {
+	$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid User ID', $badXML);
 	echo $badXML;
-	exit ();
+	exit();
 }
 
 try {
-	$dbh = new PDO ( 'spdb', '', '' );
-	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
+	$dbh = new PDO('spdb', '', '');
+	$dbh->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
 	// There is no difference DEBUG_USER and live driver.
 
-	$stmt = $dbh->query ( "uspDARTProductStatus" );
-	$productStatus = $stmt->fetchAll ( PDO::FETCH_BOTH );
-	$stmt->closeCursor ();
+	$stmt = $dbh->query("uspDARTProductStatus");
+	$productStatus = $stmt->fetchAll(PDO::FETCH_BOTH);
+	$stmt->closeCursor();
 
-	$stmt = $dbh->query ( "uspDARTOrderStatus" );
-	$orderStatus = $stmt->fetchAll ( PDO::FETCH_BOTH );
-	$stmt->closeCursor ();
+	$stmt = $dbh->query("uspDARTOrderStatus");
+	$orderStatus = $stmt->fetchAll(PDO::FETCH_BOTH);
+	$stmt->closeCursor();
 
-	$stmt = $dbh->query ( "uspDARTDriverList" );
-	$driverList = $stmt->fetchAll ( PDO::FETCH_BOTH );
-	$stmt->closeCursor ();
+	$stmt = $dbh->query("uspDARTDriverList");
+	$driverList = $stmt->fetchAll(PDO::FETCH_BOTH);
+	$stmt->closeCursor();
 
 	$sql = "uspDARTVehicleList";
-	$stmt = $dbh->query ( $sql );
-	$vehicleList = $stmt->fetchAll ( PDO::FETCH_BOTH );
-	$stmt->closeCursor ();
+	$stmt = $dbh->query($sql);
+	$vehicleList = $stmt->fetchAll(PDO::FETCH_BOTH);
+	$stmt->closeCursor();
+
+	$sql = "select iProductID, mUnitPrice from vwCRV order by iProductID, mUnitPrice";
+	$stmt = $dbh->query($sql);
+	$crvList = $stmt->fetchAll(PDO::FETCH_BOTH);
+	$stmt->closeCursor();
 
 	$dbh = null;
-} catch ( PDOException $e ) {
-	$errMsg = $e->getFile () . ' (' . $e->getLine () . ')' . $e->getMessage ();
-	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
+} catch (PDOException $e) {
+	$errMsg = $e->getFile() . ' (' . $e->getLine() . ')' . $e->getMessage();
+	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
+	$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
 	echo $badXML;
-	exit ();
+	exit();
 }
 
 // Generate the XML
 $resultStr = '<?xml version="1.0"?>' . "\n";
 $resultStr .= '<staticinfo status="success">' . "\n";
 $resultStr .= '<productstatus_entry_list infoname="productstatus">' . "\n";
-foreach ( $productStatus as $entry ) {
-	$resultStr .= '<entry id="' . $entry ['iShortID'] . '">' . mb_convert_encoding ( $entry ['sDescription'], "UTF-8", "Windows-1252" ) . "</entry>\n";
+foreach ($productStatus as $entry) {
+	$resultStr .= '<entry id="' . $entry['iShortID'] . '">' . mb_convert_encoding($entry['sDescription'], "UTF-8", "Windows-1252") . "</entry>\n";
 }
 $resultStr .= "</productstatus_entry_list>\n";
 $resultStr .= '<orderstatus_entry_list infoname="orderstatus">' . "\n";
-foreach ( $orderStatus as $entry ) {
-	$resultStr .= '<entry id="' . $entry ['iAutoID'] . '">' . mb_convert_encoding ( $entry ['sDescription'], "UTF-8", "Windows-1252" ) . "</entry>\n";
+foreach ($orderStatus as $entry) {
+	$resultStr .= '<entry id="' . $entry['iAutoID'] . '">' . mb_convert_encoding($entry['sDescription'], "UTF-8", "Windows-1252") . "</entry>\n";
 }
 $resultStr .= "</orderstatus_entry_list>\n";
 $resultStr .= '<messageaddresses_entry_list infoname="addresses">' . "\n";
@@ -80,8 +85,8 @@ $resultStr .= <<< EOT
 EOT;
 $resultStr .= "</messageaddresses_entry_list>\n";
 $resultStr .= '<driver_entry_list infoname="drivers">' . "\n";
-foreach ( $driverList as $entry ) {
-	$resultStr .= '<entry id="' . $entry ['iUserID'] . '">' . mb_convert_encoding ( $entry ['txtFirstName'], "UTF-8", "Windows-1252" ) . " " . mb_convert_encoding ( $entry ['txtLastName'], "UTF-8", "Windows-1252" ) . "</entry>\n";
+foreach ($driverList as $entry) {
+	$resultStr .= '<entry id="' . $entry['iUserID'] . '">' . mb_convert_encoding($entry['txtFirstName'], "UTF-8", "Windows-1252") . " " . mb_convert_encoding($entry['txtLastName'], "UTF-8", "Windows-1252") . "</entry>\n";
 }
 $resultStr .= "</driver_entry_list>\n";
 $resultStr .= "<webservicefilesavedays>5</webservicefilesavedays>\n";
@@ -92,8 +97,13 @@ foreach ($vehicleList as $vehicle) {
 }
 $resultStr .= "</driver_entry_list>\n";
 
+$resultStr .= "<crv_entry_list>\n";
+foreach ($crvList as $entry) {
+	$resultStr .= '		<entry id="' . $entry['iProductID'] . '">' . sprintf("0.2f", $entry['mUnitPrice']) . "</entry>\n";
+}
+$resultStr .= "</crv_entry_list>\n";
+
 $resultStr .= "</staticinfo>";
 echo $resultStr;
-dartLogging ( $currentScript, "  Success", $codeStr );
-exit ();
-?>
+dartLogging($currentScript, "  Success", $codeStr);
+exit();
