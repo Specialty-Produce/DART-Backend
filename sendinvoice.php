@@ -197,8 +197,8 @@ while ($sqlFailed) {
 		$stmt = $dbh->query($sql);
 		foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row)
 			$sendEmails[] = array(
-				'name' => $row['sDescription'],
-				'email' => $row['sEmail']
+				'name' => trim($row['sDescription']),
+				'email' => trim($row['sEmail'])
 			);
 		$stmt->closeCursor();
 		if ($adhoc) {
@@ -511,6 +511,8 @@ if ($pdfMail || $pdfFax) {
 
 		$logoFile = ($adhoc) ? '../images/sp_logo_lg.jpg' : null;
 		$pdf = new invoicePDF($locInfo[$invNum]['isCloverTransaction'], $logoFile);
+		$qrcFile = ($adhoc) ? '../images/sp_trends_qrcode.png' : null;
+		$pdf->setQRCode($qrcFile);
 		$pdf->setLocation($locInfo[$invNum]['name'], $locInfo[$invNum]['address'], $locInfo[$invNum]['city'], $locInfo[$invNum]['state'], $locInfo[$invNum]['zip'], formatPhone($locInfo[$invNum]['phone']));
 		$pdf->setInvoiceHeader($invNum, $locInfo[$invNum]['shipdate'], $locInfo[$invNum]['salesperson'], formatPhone($locInfo[$invNum]['salesphone']), $locInfo[$invNum]['po'], $locInfo[$invNum]['terms']);
 		if ($locInfo[$invNum]['showProdID'])
@@ -673,26 +675,32 @@ EOT;
 			);
 		}
 		// Send
-		$sgmail->addBcc($debugMail, $debugName);
 		if ($debug)
 			$sgmail->addBcc($debugMail, $debugName);
 		$emailList = array();
+		$badEmails = array();
 		foreach ($sendEmails as $entry) {
 			if (strlen($entry['email']) > 0) {
 				if ($entry['email'] != DONT_SEND_INVOICE_EMAIL) {
-					$emailList[] = $entry;
+					if (!filter_var($entry['email'], FILTER_VALIDATE_EMAIL))
+						$badEmails[] = $entry;
+					else
+						$emailList[] = $entry;
 				}
 			}
 		}
 		if (count($emailList) > 0) {
 			try {
-				error_log("\n-----\nSendInvoice : " . json_encode($emailList));
-
 				SendGridSP::sendDartInvoicePDFEmail('acct', $sgmail, $emailList, json_encode($saleIDs));
 			} catch (SP_Exception $spe) {
 				$errorTxt = $spe->getFile() . " (" . $spe->getLine() . ") : " . $spe->getMessage();
 				SP_ErrorLogging($errorTxt, true, DART_ERROR_LOG, 'DART PDF Email SendGrid Error');
 			}
+		}
+		if (count($badEmails) > 0) {
+			$errorTxt = "Bad Emails for " . $locInfo[$saleIDs[0]]['name'] . " (" . $locInfo[$saleIDs[0]]['id'] . ")\n";
+			$errorTxt .= "SaleIDs = " . implode(", ", $saleIDs) . "\n" . json_encode($badEmails);
+			SP_ErrorLogging($errorTxt, true, DART_ERROR_LOG, 'DART PDF Bad Emails', 'ar@specialtyproduce.com');
 		}
 	}
 

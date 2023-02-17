@@ -85,7 +85,8 @@ if ($result === false) {
 // Submit to ADP
 try {
 	$badgeID = ADP_SP::getEmployeeBadgeID ( $userid );
-	$punchResult = ADP_SP::submitPunch ( $badgeID, 'lunchout', date ( 'c', strtotime ( $starttime ) ) );
+	if ($badgeID > 0)
+		$punchResult = ADP_SP::submitPunch ( $badgeID, 'lunchout', date ( 'c', strtotime ( $starttime ) ) );
 	// SP_ErrorLogging ( "$currentScript : Submit to ADP : $badgeID : $punchResult", true, DART_ERROR_LOG, 'ADP Submit : lunchout' );
 } catch ( SP_Exception $e ) {
 	$errMsg = "ADP Error : " . $e->getMessage ();
@@ -111,4 +112,3 @@ $resultStr = <<< EOT
 EOT;
 echo $resultStr;
 exit ();
-?>

@@ -1,17 +1,18 @@
 <?php
 include_once 'global_CDC.php';
 include 'dart_init.php';
+$isDev = preg_match('/-dev/', $_SERVER['SERVER_NAME']);
 ?>
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
 	<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
-	<title>DART Index Page</title>
+	<title>azDART<?php echo ($isDev) ? '-DEV' : ''; ?> Index Page</title>
 </head>
 
 <body>
-	<h3>azDART Index Page</h3>
+	<h3>azDART<?php echo ($isDev) ? '-DEV' : ''; ?> Index Page</h3>
 	<?php echo date('m/d/y H:i:s'); ?>
 	<p>Your IP : <?php echo $_SERVER['REMOTE_ADDR']; ?></p>
 	PHP Version : <?php echo phpversion(); ?>

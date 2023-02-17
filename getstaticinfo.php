@@ -99,7 +99,7 @@ $resultStr .= "</driver_entry_list>\n";
 
 $resultStr .= "<crv_entry_list>\n";
 foreach ($crvList as $entry) {
-	$resultStr .= '		<entry id="' . $entry['iProductID'] . '">' . sprintf("0.2f", $entry['mUnitPrice']) . "</entry>\n";
+	$resultStr .= '		<entry id="' . $entry['iProductID'] . '">' . sprintf("%0.2f", $entry['mUnitPrice']) . "</entry>\n";
 }
 $resultStr .= "</crv_entry_list>\n";
 

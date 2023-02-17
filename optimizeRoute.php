@@ -12,9 +12,12 @@ $badXML = <<< EOT
 </optimize_route_list>
 EOT;
 
+error_log("POST = " . print_r($_POST, true));
+
+
 // User ID
 $userid = filter_input(INPUT_POST, 'userid', FILTER_SANITIZE_NUMBER_INT);
-error_log("$currentScript : userID=" . $user);
+error_log("$currentScript : userID=" . $userid);
 
 $debug = false;
 // if (isset ( $_GET ['a'] )) {
