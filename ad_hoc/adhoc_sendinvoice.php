@@ -79,9 +79,9 @@ $qsronlineCSV = true;
 
 if ($adhoc) {
 	/* XXX */
-	echo "Ad Hoc Done...";
+	echo "Ad Hoc Exiting...";
 	exit();
-	$argv = array('adhoc_sendinvoice.php', 6453306);
+	$argv = array('adhoc_sendinvoice.php', 6361525, 6364864, 6370032, 6371497, 6375729);
 	echo "<pre>\n";
 	echo "Starting...\n\n";
 	echo "count = " . count($argv) . "\n";

@@ -151,8 +151,7 @@ foreach ($invInfo as $item) {
 // Generate the XML
 $resultStr = '<?xml version="1.0"?>' . "\n";
 $resultStr .= '<invoices_invoice_list status="success">' . "\n";
-// include 'include/invoiceXML.php';
-include 'include/invoiceXMLTest.php';
+include 'include/invoiceXML.php';
 $resultStr .= "</invoices_invoice_list>";
 echo $resultStr;
 exit();

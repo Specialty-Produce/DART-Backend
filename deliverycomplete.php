@@ -319,14 +319,13 @@ while ($sqlFailed) {
 			$resultDeliveryFail = $dbh->exec($sql);
 		}
 		$resultUpdateGreenDiscount = true;
-		/*
+
 		if ($saleXML != '') {
 			$saleXML = "<ROOT>\n" . $saleXML . "</ROOT>";
-			dartLogging ( $currentScript, "    $saleXML=" . $saleXML, $codeStr );
+			dartLogging($currentScript, "    $saleXML=" . $saleXML, $codeStr);
 			$sql = "uspDARTDeliveryCompleteUpdatesGreenDiscount '" . $saleXML . "'";
-			$resultUpdateGreenDiscount = $dbh->exec ( $sql );
+			$resultUpdateGreenDiscount = $dbh->exec($sql);
 		}
-		*/
 
 		$dbh = null;
 	} catch (PDOException $e) {
