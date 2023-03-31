@@ -12,22 +12,16 @@ $badXML = <<< EOT
 </optimize_route_list>
 EOT;
 
-error_log("POST = " . print_r($_POST, true));
-
-
-// User ID
-$userid = filter_input(INPUT_POST, 'userid', FILTER_SANITIZE_NUMBER_INT);
-error_log("$currentScript : userID=" . $userid);
-
 $debug = false;
-// if (isset ( $_GET ['a'] )) {
+// if (isset($_GET['a'])) {
 // 	$debug = true;
-// 	$userid = 635;
-// 	$optJSON = '{"origin":{"lat":32.74390348236332,"lon":-117.1876295563925},"locations":[{"asap":0,"id":722,"lat":32.78405380249023,"name":"3 Squares Gourmet On The Go","lon":-117.0602722167969},{"asap":0,"id":2215,"lat":33.00494384765625,"name":"Testing Cafe","lon":-117.0915603637695},{"asap":0,"id":2452,"lat":32.75801086425781,"name":"3 Elite","lon":-117.1361846923828},{"asap":1,"id":3293,"lat":32.98132705688477,"name":"Testing 3","lon":-117.2498397827148}]}';
+// 	$userid = 12054;
+// 	$optJSON = '{"origin":{"lat":32.74364827570099,"lon":-117.1869407149535},"locations":[{"asap":0,"id":8261,"lat":32.87977600097656,"name":"Zanzibar at the Loft","lon":-117.2355575561523},{"asap":0,"id":1688,"lat":32.88981628417969,"name":"Cliffhanger Cafe Menu","lon":-117.2508087158203},{"asap":0,"id":564,"lat":32.90445709228516,"name":"Lodge at Torrey Pines Main","lon":-117.2445373535156},{"asap":0,"id":6746,"lat":32.8717155456543,"name":"Raised By Wolves","lon":-117.2136383056641},{"asap":0,"id":8324,"lat":32.87705612182617,"name":"Uncle Italian","lon":-117.2396240234375},{"asap":1,"id":5323,"lat":32.87334442138672,"name":"Regents Pizzeria","lon":-117.2179107666016},{"asap":0,"id":8358,"lat":32.89577484130859,"name":"Park Commons - ARE","lon":-117.2011108398438},{"asap":0,"id":7029,"lat":32.90058898925781,"name":"Gravity Heights Restaurant and Brewery","lon":-117.1909408569336}]}';
 // 	// $optJSON = '{"origin":{"lat":32.744026,"lon":-117.187627},"locations":[{"name":"Handlery Hotel & Resort","id":973,"lat":32.760414,"lon":-117.172455,"asap":true},{"name":"Kensington Cafe","id":3118,"lat":32.763236,"lon":-117.106311,"asap":false},{"name":"Carnitas Snack Shack North Park","id":3235,"lat":32.748516,"lon":-117.135489,"asap":false},{"name":"Soda & Swine Liberty Station (Bar)","id":5160,"lat":32.737547,"lon":-117.211503,"asap":false},{"name":"Brigantine Imperial Beach","id":6510,"lat":32.5795631,"lon":-117.1317297,"asap":false}]}';
 // }
 
-// Check User ID
+// User ID
+$userid = filter_input(INPUT_POST, 'userid', FILTER_SANITIZE_NUMBER_INT);
 if ($userid == FALSE || is_null($userid)) {
 	$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid User ID', $badXML);
 	echo $badXML;
@@ -97,6 +91,11 @@ foreach ($jd->locations as $entry) {
 	$currentLocationOrder[$entry->name] = $entry->id;
 }
 
+if ($debug) {
+	error_log("$currentScript : array_keys(\$currentLocationOrder) : " . print_r(array_keys($currentLocationOrder), true));
+	$foo = $routeGTM->getGoogleRouteTime(array_keys($currentLocationOrder), true, true, false);
+	error_log("$currentScript : \$routeGTM->getGoogleRouteTime(array_keys(\$currentLocationOrder), true, true, false) : foo : " . print_r($foo, true));
+}
 try {
 	list($currentTravelTime, $currentTravelSummary, $optRouteError) = $routeGTM->getGoogleRouteTime(array_keys($currentLocationOrder), true, true, false);
 	list($currentRouteText, $curentRouteURL) = $routeGTM->getRouteTextURL(array_keys($currentLocationOrder));
@@ -143,7 +142,11 @@ foreach ($optRouteOrder as $loc) {
 	$resultStr .= '<entry id="' . $currentLocationOrder[$loc] . '">' . $loc . '</entry>' . "\n";
 }
 $resultStr .= '</optimize_route_list>';
-echo $resultStr;
+if ($debug) {
+	echo "<hr/><h3>\$resultStr</h3><pre>" . htmlentities($resultStr) . '</pre>';
+} else {
+	echo $resultStr;
+}
 
 $endMS = microtime(true) * 1000.0;
 if ((array_keys($currentLocationOrder) === $optRouteOrder)) {

@@ -47,6 +47,7 @@ if ($getSaleID != null && $getSaleID !== false) {
 	if (!isset($incomingHeaders['X-API-Key']) || $incomingHeaders['X-API-Key'] != DART_SENDINVOICE_API_KEY) {
 		SP_ErrorLogging("$currentScript : GET sid sent, $getSaleID, but invalid X-API-Key", true, DART_ERROR_LOG);
 	} else {
+		dartLogging($currentScript, "Called via HTTP : sid = " . $getSaleID);
 		$argv = array(
 			'sendinvoice.php',
 			$getSaleID

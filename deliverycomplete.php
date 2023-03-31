@@ -285,6 +285,7 @@ while ($sqlFailed) {
 		$updateAtDeliveryFailXML = '';
 		$saleDetailXML = '';
 		$saleXML = '';
+		$saleJSON = array();
 		foreach ($jd->deliveryjson->invoice_list as $invoice) {
 			$getAllLines = false;
 			if ($invoice->lastupdatetime != $invTimesDB[$invoice->saleid]) {
@@ -300,6 +301,12 @@ while ($sqlFailed) {
 			// Green Discount Updates
 			if ($invoice->greendiscountchanged == "true" || $getAllLines) {
 				$saleXML .= '<Rec rID="' . $invoice->saleid . '" mUnitPrice="' . $invoice->greendiscountfinal . '"/>' . "\n";
+				$gdAmt = preg_replace('/(-)?[^0-9.]/', '', $invoice->greendiscountfinal);
+				$gdAmt = abs($gdAmt) * -1;
+				$saleJSON[] = (object) [
+					'iSaleID' => $invoice->saleid,
+					'mUnitPrice' => $gdAmt
+				];
 			}
 		}
 
@@ -320,10 +327,15 @@ while ($sqlFailed) {
 		}
 		$resultUpdateGreenDiscount = true;
 
-		if ($saleXML != '') {
-			$saleXML = "<ROOT>\n" . $saleXML . "</ROOT>";
-			dartLogging($currentScript, "    $saleXML=" . $saleXML, $codeStr);
-			$sql = "uspDARTDeliveryCompleteUpdatesGreenDiscount '" . $saleXML . "'";
+		// if ($saleXML != '') {
+		// 	$saleXML = "<ROOT>\n" . $saleXML . "</ROOT>";
+		// 	dartLogging($currentScript, "    $saleXML=" . $saleXML, $codeStr);
+		// 	$sql = "uspDARTDeliveryCompleteUpdatesGreenDiscount '" . $saleXML . "'";
+		// 	$resultUpdateGreenDiscount = $dbh->exec($sql);
+		// }
+		if (count($saleJSON) > 0) {
+			dartLogging($currentScript, "    saleJSON=" . json_encode($saleJSON), $codeStr);
+			$sql = "uspDARTDeliveryCompleteUpdatesGreenDiscount '" . json_encode($saleJSON) . "'";
 			$resultUpdateGreenDiscount = $dbh->exec($sql);
 		}
 
@@ -333,7 +345,9 @@ while ($sqlFailed) {
 		$eMessage = $e->getMessage();
 		$errMsg .= $e->getFile() . ' (' . $e->getLine() . ')' . " sqlAttemptCount=$sqlAttemptCount : " . $eMessage;
 		$errMsg .= "\n\ncodeStr = $codeStr\n";
-		$errMsg .= "\ninvXML = " . $invXML;
+		$errMsg .= "invXML =  $invXML\n";
+		$errMsg .= "saleDetailXML =  $saleDetailXML\n";
+		$errMsg .= "saleJSON =  " . json_encode($saleJSON) . "\n";
 		if (preg_match('/Timeout expired/', $eMessage) || preg_match('/SQL Server does not exist or access denied/', $eMessage) || preg_match('/deadlock victim/', $eMessage)) {
 			$sqlParts = explode(' ', $sql);
 			SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, 'DART : DeliveryComplete Retry : ' . $sqlParts[0]);

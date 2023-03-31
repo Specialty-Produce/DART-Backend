@@ -1,5 +1,6 @@
 <?php
 // exit ();
+ini_set('max_execution_time', 3600);
 require_once 'global_CDC.php';
 require_once '../dart_init.php';
 require_once 'classes_SP/class_LocationSP.php';
@@ -81,7 +82,7 @@ if ($adhoc) {
 	/* XXX */
 	echo "Ad Hoc Exiting...";
 	exit();
-	$argv = array('adhoc_sendinvoice.php', 6361525, 6364864, 6370032, 6371497, 6375729);
+	$argv = array('adhoc_sendinvoice.php', 6381344, 6383371);
 	echo "<pre>\n";
 	echo "Starting...\n\n";
 	echo "count = " . count($argv) . "\n";
@@ -675,8 +676,8 @@ EOT;
 			);
 		}
 		// Send
-		// if ($debug)
-		$sgmail->addBcc($debugMail, $debugName);
+		if ($debug || $adhoc)
+			$sgmail->addBcc($debugMail, $debugName);
 		$emailList = array();
 		$badEmails = array();
 		foreach ($sendEmails as $entry) {
@@ -1086,6 +1087,7 @@ if ($r365FTP) {
 				dartLogging($currentScript, "    R365 FTP Failed : " . implode(',', $r365InvoiceList));
 			}
 		}
+		error_log($currentScript . " : R365 FTP Sent : " . implode(',', $r365InvoiceList));
 		dartLogging($currentScript, "    R365 FTP Sent : " . implode(',', $r365InvoiceList));
 	}
 } else {
@@ -1237,7 +1239,7 @@ if ($plateIQMail) {
 			$mail->FromName = "Specialty Produce Accounting";
 			$mail->From = "ar@specialtyproduce.com";
 			$mail->AddAddress($plateIQEmailAddress);
-			if ($debug)
+			if ($debug || $adhoc)
 				$mail->AddBCC($debugMail, $debugName);
 			$mail->Subject = "Specialty Produce Imported Invoice";
 			$mail->AddReplyTo("ar@specialtyproduce.com", "Specialty Produce Accounting");
