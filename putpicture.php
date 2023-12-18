@@ -96,7 +96,7 @@ try {
 	$azb = new AzureBlobSP('specprodstorage');
 	imagepng($imgDest, $filePath);
 	if ($jd->pictype == 'poorquality')
-		$azb->putBlockBlobFile(AzureBlobSP::AZURE_STORAGE_POOR_QUALITY_PICS_DIR, '', $fileName, $filePath);
+		$azb->putBlockBlobFile(AzureBlobSP::AZURE_STORAGE_POOR_QUALITY_PICS_DIR, '', $fileName, $filePath, 'image/png');
 	else {
 		$errMsg = "Invalid pictype : " . $jd->pictype . ", code = " . $codeStr;
 		SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);

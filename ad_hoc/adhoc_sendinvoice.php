@@ -48,6 +48,7 @@ if ($getSaleID != null && $getSaleID !== false) {
 	if (!isset($incomingHeaders['X-API-Key']) || $incomingHeaders['X-API-Key'] != DART_SENDINVOICE_API_KEY) {
 		SP_ErrorLogging("$currentScript : GET sid sent, $getSaleID, but invalid X-API-Key", true, DART_ERROR_LOG);
 	} else {
+		dartLogging($currentScript, "Called via HTTP : sid = " . $getSaleID);
 		$argv = array(
 			'sendinvoice.php',
 			$getSaleID
@@ -82,14 +83,14 @@ if ($adhoc) {
 	/* XXX */
 	echo "Ad Hoc Exiting...";
 	exit();
-	$argv = array('adhoc_sendinvoice.php', 6381344, 6383371);
+	// $argv = array('adhoc_sendinvoice.php', 6873189, 6875546, 6876178, 6879627, 6880953, 6883294, 6884395, 6886619, 6888208, 6891059, 6892106);
 	echo "<pre>\n";
 	echo "Starting...\n\n";
 	echo "count = " . count($argv) . "\n";
 	error_log("$currentScript : START...");
 
 	$debug = false;
-	$pdfMail = true;
+	$pdfMail = false;
 	$pdfFax = false;
 	$processEDIs = false;
 	$rsiMail = false;
@@ -284,7 +285,7 @@ while ($sqlFailed) {
 		}
 
 		// Restaurant 365
-		$stmt = $dbh->query("SELECT sR365ID, sFTPUsername, sFTPPassword, sFTPFolder FROM tblDartInvoiceSendR365 WHERE iLocationID=" . $locInfo[$argv[1]]['id']);
+		$stmt = $dbh->query("SELECT sR365ID, ltrim(rtrim(sFTPUsername)) as sFTPUsername, ltrim(rtrim(sFTPPassword)) as sFTPPassword, sFTPFolder FROM tblDartInvoiceSendR365 WHERE iLocationID=" . $locInfo[$argv[1]]['id']);
 		$r365Data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 		$stmt->closeCursor();
 		if ($adhoc) {
@@ -548,7 +549,7 @@ if ($pdfMail || $pdfFax) {
 			} else {
 				// Azure Storage NOT working
 				$sigImage = DART_SIG_BACKUP_DIR . $locInfo[$invNum]['id'] . '/' . $invNum . '.png';
-				SP_ErrorLogging("Azure storage NOT working : $sigImage", true, DART_ERROR_LOG, "DART : Azure storage NOT working : $currentScript");
+				SP_ErrorLogging("$currentScript : Azure storage NOT working : $sigImage", true, DART_ERROR_LOG, "DART : Azure storage NOT working : $currentScript");
 			}
 		}
 		$pdf->addSignatureImage($sigImage);
@@ -616,17 +617,42 @@ if ($pdfMail || $pdfFax) {
 // Keep track of how many places this is sent to successfully. If we are at "0" at the end, print for sales person
 $sendCount = 0;
 
+// Instantiate the mail stuff
+$mail = new PHPMailerSP();
+$mail->setApiKey('acct');
+
 // Send the emails
 if ($pdfMail) {
 	if ($adhoc)
 		echo "Sending PDFs via email...\n";
+	// Setup Info
 	$emailLogFile = SPConsts::ErrorLogRoot . "dart_emails.txt";
+	$loggingToFile = true;
+	$usingSendGrid = false;
 	if (count($sendEmails) > 0) {
-		// $fp = fopen($emailLogFile, "a");
+		if ($loggingToFile)
+			$fp = fopen($emailLogFile, "a");
 
-		// Instantiate SendGrid Mail
-		$sgmail = SendGridSP::getEmail();
+		// Body
+		$mailBody = <<< EOT
+Dear Customer,
 
+Your latest signed invoice is attached.  Remember, you can always view your invoice history and proof of delivery by logging into your account at www.specialtyproduce.com.
+
+Refer to attached invoice for your payment terms. Payment is due in our office by your payment terms date.
+
+You can remit payment two ways...
++ Online : Simply log into your account at www.specialtyproduce.com and click the green bar for "Accounting - Online Bill Pay".  Please note, you will need to first contact our accounting department at ar@specialtyproduce.com or (619) 876-4070 to activate your account for online bill pay.
++ Mail : Make checks payable to Specialty Produce and mail it to: P.O. Box 82066, San Diego, CA 92138
+
+Should you have any questions, please contact accounting department at ar@specialtyproduce.com or (619) 876-4070.
+
+We appreciate your business.
+
+Sincerely,
+Specialty Produce
+
+EOT;
 		// Subject line
 		$subjectStr = (count($argv) == 2) ? 'SP Invoice : ' : 'SP Invoices : ';
 		$subjectStr .= $argv[1];
@@ -635,134 +661,102 @@ if ($pdfMail) {
 			$subjectStr .= ', ' . $argv[$i];
 			$subjectStr .= (strlen($locInfo[$argv[$i]]['po']) > 0) ? ' (' . $locInfo[$argv[$i]]['po'] . ')' : '';
 		}
+		if ($loggingToFile)
+			fwrite($fp, date('[d-M-Y H:i:s]') . " : " . $subjectStr . " -");
 
-		// fwrite($fp, date('[d-M-Y H:i:s]') . " : " . $subjectStr . " -");
-
-		$sgmail->setFrom("ar@specialtyproduce.com", "Specialty Produce Accounting");
-		$sgmail->setSubject($subjectStr);
-		$sgmail->setReplyTo("ar@specialtyproduce.com", "Specialty Produce Accounting");
-		// Add the body
-		$body = <<< EOT
-Dear Customer,
-				
-Your latest signed invoice is attached.  Remember, you can always view your invoice history and proof of delivery by logging into your account at www.specialtyproduce.com.
-				
-Refer to attached invoice for your payment terms. Payment is due in our office by your payment terms date.
-				
-You can remit payment two ways...
- + Online : Simply log into your account at www.specialtyproduce.com and click the green bar for "Accounting - Online Bill Pay".  Please note, you will need to first contact our accounting department at ar@specialtyproduce.com or (619) 876-4070 to activate your account for online bill pay.
- + Mail : Make checks payable to Specialty Produce and mail it to: P.O. Box 82066, San Diego, CA 92138
-				
-Should you have any questions, please contact accounting department at ar@specialtyproduce.com or (619) 876-4070.
-				
-We appreciate your business.
-				
-Sincerely,
-Specialty Produce
-				
-EOT;
-		$sgmail->addContent("text/plain", $body);
-		// Add the PDFs
-		$saleIDs = array();
-		foreach (array_keys($locInfo) as $key) {
-			$saleIDs[] = $key;
-			$outFile = DART_PDF_DIR . $key . ".pdf";
-			$outFileName = $key . ".pdf";
-			$file_encoded = base64_encode(file_get_contents($outFile));
-			$sgmail->addAttachment(
-				$file_encoded,
-				"application/pdf",
-				$outFileName
-			);
-		}
-		// Send
-		if ($debug || $adhoc)
-			$sgmail->addBcc($debugMail, $debugName);
-		$emailList = array();
-		$badEmails = array();
-		foreach ($sendEmails as $entry) {
-			if (strlen($entry['email']) > 0) {
-				if ($entry['email'] != DONT_SEND_INVOICE_EMAIL) {
-					if (!filter_var($entry['email'], FILTER_VALIDATE_EMAIL))
-						$badEmails[] = $entry;
-					else
-						$emailList[] = $entry;
-				}
+		if ($usingSendGrid) {
+			// Instantiate SendGrid Mail
+			$sgmail = SendGridSP::getEmail();
+			$sgmail->setFrom("ar@specialtyproduce.com", "Specialty Produce Accounting");
+			$sgmail->setSubject($subjectStr);
+			$sgmail->setReplyTo("ar@specialtyproduce.com", "Specialty Produce Accounting");
+			// Add the body
+			$sgmail->addContent("text/plain", $mailBody);
+			// Add the PDFs
+			$saleIDs = array();
+			foreach (array_keys($locInfo) as $key) {
+				$saleIDs[] = $key;
+				$outFile = DART_PDF_DIR . $key . ".pdf";
+				$outFileName = $key . ".pdf";
+				$file_encoded = base64_encode(file_get_contents($outFile));
+				$sgmail->addAttachment(
+					$file_encoded,
+					"application/pdf",
+					$outFileName
+				);
 			}
-		}
-		if (count($emailList) > 0) {
-			try {
-				SendGridSP::sendDartInvoicePDFEmail('acct', $sgmail, $emailList, json_encode($saleIDs));
-			} catch (SP_Exception $spe) {
-				$errorTxt = $spe->getFile() . " (" . $spe->getLine() . ") : " . $spe->getMessage();
-				SP_ErrorLogging($errorTxt, true, DART_ERROR_LOG, 'DART PDF Email SendGrid Error');
-			}
-		}
-		if (count($badEmails) > 0) {
-			$errorTxt = "Bad Emails for " . $locInfo[$saleIDs[0]]['name'] . " (" . $locInfo[$saleIDs[0]]['id'] . ")\n";
-			$errorTxt .= "SaleIDs = " . implode(", ", $saleIDs) . "\n" . json_encode($badEmails);
-			SP_ErrorLogging($errorTxt, true, DART_ERROR_LOG, 'DART PDF Bad Emails', 'ar@specialtyproduce.com');
-		}
-	}
-
-	/*
-		$mail->FromName = "Specialty Produce Accounting";
-		$mail->From = "ar@specialtyproduce.com";
-		$mail->Subject = $subjectStr;
-		$mail->AddReplyTo("ar@specialtyproduce.com", "Specialty Produce Accounting");
-		// Add the PDFs
-		foreach (array_keys($locInfo) as $key) {
-			$outFile = DART_PDF_DIR . $key . ".pdf";
-			$mail->AddAttachment($outFile, "$key.pdf");
-		}
-		// Add the body
-		$mail->Body = <<< EOT
-Dear Customer,
-
-Your latest signed invoice is attached.  Remember, you can always view your invoice history and proof of delivery by logging into your account at www.specialtyproduce.com.
-
-Refer to attached invoice for your payment terms. Payment is due in our office by your payment terms date.
-
-You can remit payment two ways...
- + Online : Simply log into your account at www.specialtyproduce.com and click the green bar for "Accounting - Online Bill Pay".  Please note, you will need to first contact our accounting department at ar@specialtyproduce.com or (619) 876-4070 to activate your account for online bill pay.
- + Mail : Make checks payable to Specialty Produce and mail it to: P.O. Box 82066, San Diego, CA 92138
-
-Should you have any questions, please contact accounting department at ar@specialtyproduce.com or (619) 876-4070.
-
-We appreciate your business.
-
-Sincerely,
-Specialty Produce
-
-EOT;
-
-		// Send the emails
-		$badEmails = array();
-		if ($debug)
-			$mail->AddBCC($debugMail, $debugName);
-		foreach ($sendEmails as $entry) {
-			if (strlen($entry['email']) > 0) {
-				fwrite($fp, " " . $entry['email']);
-				if ($entry['email'] == DONT_SEND_INVOICE_EMAIL) {
-					$sendCount++;
-				} else {
-					$mail->AddAddress($entry['email'], $entry['name']);
-					if (!$mail->Send()) {
-						$badEmails[] = $entry['email'];
-					} else {
-						$sendCount++;
+			// Send
+			if ($debug)
+				$sgmail->addBcc($debugMail, $debugName);
+			$emailList = array();
+			$badEmails = array();
+			foreach ($sendEmails as $entry) {
+				if (strlen($entry['email']) > 0) {
+					if ($loggingToFile)
+						fwrite($fp, " " . $entry['email']);
+					if ($entry['email'] != DONT_SEND_INVOICE_EMAIL) {
+						if (!filter_var($entry['email'], FILTER_VALIDATE_EMAIL))
+							$badEmails[] = $entry;
+						else
+							$emailList[] = $entry;
 					}
-					$mail->ClearAddresses();
-					$mail->ClearBCCs();
 				}
 			}
+			if (count($emailList) > 0) {
+				try {
+					SendGridSP::sendDartInvoicePDFEmail('acct', $sgmail, $emailList, json_encode($saleIDs));
+				} catch (SP_Exception $spe) {
+					$errorTxt = $spe->getFile() . " (" . $spe->getLine() . ") : " . $spe->getMessage();
+					SP_ErrorLogging($errorTxt, true, DART_ERROR_LOG, 'DART PDF Email SendGrid Error');
+				}
+			}
+			if (count($badEmails) > 0) {
+				$errorTxt = "Bad Emails for " . $locInfo[$saleIDs[0]]['name'] . " (" . $locInfo[$saleIDs[0]]['id'] . ")\n";
+				$errorTxt .= "SaleIDs = " . implode(", ", $saleIDs) . "\n" . json_encode($badEmails);
+				SP_ErrorLogging($errorTxt, true, DART_ERROR_LOG, 'DART PDF Bad Emails', 'ar@specialtyproduce.com');
+			}
+		} else {
+			$mail->FromName = "Specialty Produce Accounting";
+			$mail->From = "ar@specialtyproduce.com";
+			$mail->Subject = $subjectStr;
+			$mail->AddReplyTo("ar@specialtyproduce.com", "Specialty Produce Accounting");
+			// Add the PDFs
+			foreach (array_keys($locInfo) as $key) {
+				$outFile = DART_PDF_DIR . $key . ".pdf";
+				$mail->AddAttachment($outFile, "$key.pdf");
+			}
+			$mail->Body = $mailBody;
+
+			// Send the emails
+			$badEmails = array();
+			if ($debug)
+				$mail->AddBCC($debugMail, $debugName);
+			foreach ($sendEmails as $entry) {
+				if (strlen($entry['email']) > 0) {
+					if ($loggingToFile)
+						fwrite($fp, " " . $entry['email']);
+					if ($entry['email'] == DONT_SEND_INVOICE_EMAIL) {
+						$sendCount++;
+					} else {
+						$mail->AddAddress($entry['email'], $entry['name']);
+						if (!$mail->Send()) {
+							$badEmails[] = $entry['email'];
+						} else {
+							$sendCount++;
+						}
+						$mail->ClearAddresses();
+						$mail->ClearBCCs();
+					}
+				}
+			}
+			$mail->ClearAttachments();
+			$mail->ClearAllRecipients();
 		}
-		$mail->ClearAttachments();
-		fwrite($fp, "(" . $sendCount . ")\n");
-		fclose($fp);
+		if ($loggingToFile) {
+			fwrite($fp, "(" . $sendCount . ")\n");
+			fclose($fp);
+		}
 	}
-	$mail->ClearAllRecipients();
-	*/
 } else {
 	if ($adhoc)
 		echo "NOT sending PDFs via email...\n";
@@ -791,10 +785,6 @@ if ($pdfFax) {
 	if ($adhoc)
 		echo "NOT sending PDFs via fax...\n";
 }
-
-// Instantiate the mail stuff
-$mail = new PHPMailerSP();
-$mail->setApiKey('acct');
 
 // Process the EDI invoices
 if ($processEDIs) {
@@ -899,7 +889,7 @@ EOT;
 				// Write to Azure Blob
 				$azFTPDir = (strlen($loc['parentFTP']) > 0) ? $loc['parentFTP'] . '/' : '';
 				$azFTPDir .= $loc['ediID'] . '/outgoing/';
-				$azb->putBlockBlobFile(AzureBlobSP::AZURE_STORAGE_FTP_DIR, $azFTPDir, $outFileName, $outFile);
+				$azb->putBlockBlobFile(AzureBlobSP::AZURE_STORAGE_FTP_DIR, $azFTPDir, $outFileName, $outFile, 'text/plain');
 				// Set up the ftp connection, if needed
 				$sentSuccessfully = true;
 				if (constant('EDISPConsts::' . $loc['ediID'] . "_SENDFTP")) {
@@ -1111,7 +1101,7 @@ if ($bevagerFTP) {
 				$bevFile = SPConsts::TempDir . $bevFilename;
 				file_put_contents($bevFile, $bevString);
 				$ftpDir = $invBev::FILEMAGE_FTP_DIR . $invBev::FTP_INVOICES;
-				$azb->putBlockBlobFile(AzureBlobSP::AZURE_STORAGE_FTP_DIR, $ftpDir, $bevFilename, $bevFile);
+				$azb->putBlockBlobFile(AzureBlobSP::AZURE_STORAGE_FTP_DIR, $ftpDir, $bevFilename, $bevFile, 'text/csv');
 				sleep(3);
 				SP_ErrorLogging("Bevager file created : $ftpDir : $bevFilename", true, '', "Bevager EDI : $bevFilename");
 				unlink($bevFile);
@@ -1204,7 +1194,7 @@ if ($plateIQMail) {
 					$piqFH = fopen($piqFile, "w");
 					fwrite($piqFH, $piqString);
 					fclose($piqFH);
-					$azb->putBlockBlobFile(AzureBlobSP::AZURE_STORAGE_FTP_DIR, $invPlateIQ::FILEMAGE_FTP_DIR, $piqFilename, $piqFile);
+					$azb->putBlockBlobFile(AzureBlobSP::AZURE_STORAGE_FTP_DIR, $invPlateIQ::FILEMAGE_FTP_DIR, $piqFilename, $piqFile, 'text/csv');
 					sleep(3);
 					unlink($piqFile);
 				} catch (SP_Exception $spe) {
@@ -1360,7 +1350,7 @@ if ($qsronlineCSV) {
 				$qsrString = $invQSR->generateInvoiceCSV();
 				$qsrFile = SPConsts::TempDir . $qsrFilename;
 				file_put_contents($qsrFile, $qsrString);
-				$azb->putBlockBlobFile(AzureBlobSP::AZURE_STORAGE_FTP_DIR, $invQSR::FILEMAGE_FTP_DIR, $qsrFilename, $qsrFile);
+				$azb->putBlockBlobFile(AzureBlobSP::AZURE_STORAGE_FTP_DIR, $invQSR::FILEMAGE_FTP_DIR, $qsrFilename, $qsrFile, 'text/csv');
 				sleep(3);
 				unlink($qsrFile);
 			}

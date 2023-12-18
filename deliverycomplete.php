@@ -116,7 +116,7 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 	} else {
 		// Azure Storage NOT working
 		$filedir = DART_SIG_BACKUP_DIR . $jd->deliveryjson->delivery->locationid;
-		SP_ErrorLogging("Azure storage NOT working : $testImageFile", true, DART_ERROR_LOG, "DART : Azure storage NOT working : $currentScript");
+		SP_ErrorLogging("$currentScript : Azure storage NOT working : $testImageFile", true, DART_ERROR_LOG, "DART : Azure storage NOT working : $currentScript");
 	}
 	if (!is_dir($filedir)) {
 		if (!mkdir($filedir)) {

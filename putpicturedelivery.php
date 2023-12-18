@@ -68,6 +68,7 @@ foreach ($jd->invoice_list as $invoice) {
 	$saleIDs[] = $invoice->saleid;
 }
 $invXML .= "</ROOT>";
+dartLogging($currentScript, "invXML : $invXML", $codeStr);
 $result = false;
 $sqlFailed = true;
 $sqlAttemptCount = 1;
@@ -146,7 +147,7 @@ if (!imagecopy($imgDest, $imgSrc, 0, 0, 0, 0, $width, $height)) {
 try {
 	$azb = new AzureBlobSP('specprodstorage');
 	imagepng($imgDest, $filePath);
-	$azb->putBlockBlobFile(AzureBlobSP::AZURE_STORAGE_DART_DELIVERY_PICS_DIR, '', $fileName, $filePath);
+	$azb->putBlockBlobFile(AzureBlobSP::AZURE_STORAGE_DART_DELIVERY_PICS_DIR, '', $fileName, $filePath, 'image/png');
 	unlink($filePath);
 } catch (SP_Exception $e) {
 	$errMsg = $e->getMessage();

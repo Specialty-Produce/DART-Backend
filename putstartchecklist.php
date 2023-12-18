@@ -1,7 +1,8 @@
 <?php
 include_once 'global_CDC.php';
+include_once 'classes_SP/class_Samsara_SP.php';
 include 'dart_init.php';
-$currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
+$currentScript = basename($_SERVER["SCRIPT_NAME"]);
 
 // On various errors and failures, we'll use the status BAD update XML
 $badXML = <<< EOT
@@ -11,92 +12,106 @@ $badXML = <<< EOT
 EOT;
 
 // Get the POST data
-$appJSON = $_POST ['jsondata'];
-dartLogging ( $currentScript, "jsondata=" . $appJSON );
+$appJSON = $_POST['jsondata'];
+dartLogging($currentScript, "jsondata=" . $appJSON);
 
 //$appJSON='{"userid":"637","dartsessionid":"1194","cljson":"{\"truck\":\"22:0:1\",\"odometer\":\"1\",\"test_items\":[\"gauges_fuel\"],\"comments\":\"Need%20oil%20chance.\"}"}';
 
 
 // appJSON
-if ($appJSON == FALSE || is_null ( $appJSON )) {
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : No jsondata supplied', $badXML );
+if ($appJSON == FALSE || is_null($appJSON)) {
+	$badXML = preg_replace('/XXX/', $currentScript . ' : No jsondata supplied', $badXML);
 	echo $badXML;
-	exit ();
+	exit();
 }
 
-$jd = json_decode ( $appJSON );
+$jd = json_decode($appJSON);
 // userid
-$userid = filter_var ( $jd->userid, FILTER_SANITIZE_NUMBER_INT );
-if ($userid == FALSE || is_null ( $userid )) {
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : No userid', $badXML );
+$userid = filter_var($jd->userid, FILTER_SANITIZE_NUMBER_INT);
+if ($userid == FALSE || is_null($userid)) {
+	$badXML = preg_replace('/XXX/', $currentScript . ' : No userid', $badXML);
 	echo $badXML;
-	exit ();
+	exit();
 }
 // Dart Session ID
-$dartSession = filter_var ( $jd->dartsessionid, FILTER_SANITIZE_NUMBER_INT );
-if ($dartSession == FALSE || is_null ( $dartSession )) {
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : No Dart session ID', $badXML );
+$dartSession = filter_var($jd->dartsessionid, FILTER_SANITIZE_NUMBER_INT);
+if ($dartSession == FALSE || is_null($dartSession)) {
+	$badXML = preg_replace('/XXX/', $currentScript . ' : No Dart session ID', $badXML);
 	echo $badXML;
-	exit ();
+	exit();
 }
 
 // checklistJSON
 $checklistJSON = $jd->cljson;
-if ($checklistJSON == FALSE || is_null ( $checklistJSON )) {
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : No checklist data', $badXML );
+if ($checklistJSON == FALSE || is_null($checklistJSON)) {
+	$badXML = preg_replace('/XXX/', $currentScript . ' : No checklist data', $badXML);
 	echo $badXML;
-	exit ();
+	exit();
 }
-$clInfo = json_decode ( $checklistJSON );
+$clInfo = json_decode($checklistJSON);
+$spTruckID = 0;
 
 try {
-	$dbh = new PDO ( 'spdb', '', '' );
-	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-	
-	$truckinfo = preg_split ( '/:/', $clInfo->truck );
+	$dbh = new PDO('spdb', '', '');
+	$dbh->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+	$truckinfo = preg_split('/:/', $clInfo->truck);
 	$odoReading = ($clInfo->odometer > 999999) ? 999999 : $clInfo->odometer;
-	$sqlds = "uspDARTTruckDataStart $dartSession, $userid, " . $truckinfo [0] . ", " . $odoReading;
-	$stmt = $dbh->query ( $sqlds );
-	$dataresult = $stmt->fetch ( PDO::FETCH_ASSOC );
-	$stmt->closeCursor ();
-	
+	$spTruckID = $truckinfo[0];
+	$sqlds = "uspDARTTruckDataStart $dartSession, $userid, " . $spTruckID . ", " . $odoReading;
+	$stmt = $dbh->query($sqlds);
+	$dataresult = $stmt->fetch(PDO::FETCH_ASSOC);
+	$stmt->closeCursor();
+
 	$itemCount = 0;
 	$clXML = "<ROOT>";
-	foreach ( $clInfo->test_items as $item ) {
+	foreach ($clInfo->test_items as $item) {
 		$clXML .= "\n" . '<Rec sDes = "' . $item . '"/>';
-		$itemCount ++;
+		$itemCount++;
 	}
 	if ($clInfo->comments != '') {
-		$clXML .= "\n" . '<Rec sDes = "Comment : ' . rawurldecode ( $clInfo->comments ) . '"/>';
-		$itemCount ++;
+		$clXML .= "\n" . '<Rec sDes = "Comment : ' . rawurldecode($clInfo->comments) . '"/>';
+		$itemCount++;
 	}
 	$clXML .= "\n</ROOT>";
 	$clresult = 0;
 	$sqlcl = '';
 	if ($itemCount > 0) {
 		$sqlcl = "uspDARTCheckListTruck '" . $clXML . "', $dartSession";
-		$stmt = $dbh->query ( $sqlcl );
-		$result = $stmt->fetchAll ( PDO::FETCH_ASSOC );
-		$stmt->closeCursor ();
-		$clresult = count ( $result );
+		$stmt = $dbh->query($sqlcl);
+		$result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+		$stmt->closeCursor();
+		$clresult = count($result);
 	}
-	
+
 	$dbh = null;
-} catch ( PDOException $e ) {
-	$errMsg = $e->getFile () . ' (' . $e->getLine () . ')' . $e->getMessage ();
-	SP_errorLogging ( $errMsg, true, DART_ERROR_LOG );
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
+} catch (PDOException $e) {
+	$errMsg = $e->getFile() . ' (' . $e->getLine() . ')' . $e->getMessage();
+	SP_errorLogging($errMsg, true, DART_ERROR_LOG);
+	$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
 	echo $badXML;
-	exit ();
+	exit();
 }
 
-if (! isset ( $dataresult ['Identity'] ) || $clresult != $itemCount) {
+// Samsara assignment
+try {
+	$samDriverID = Samsara_SP::getEmployeeDriverID($userid);
+	$samVehicleID = Samsara_SP::getVehicleID($spTruckID);
+	if ($samDriverID > 0 && $samVehicleID > 0) {
+		$samAssignResult = Samsara_SP::assignDriverToVehicle($samDriverID, $samVehicleID);
+		// SP_errorLogging("Samsara Assign Result : $userid / $spTruckID -> $samAssignResult", false, DART_ERROR_LOG);
+	}
+} catch (SP_Exception $e) {
+	SP_errorLogging($e, true, DART_ERROR_LOG, 'DART : Samsara Assign Error');
+}
+
+if (!isset($dataresult['Identity']) || $clresult != $itemCount) {
 	$errMsg = "$currentScript failed on : (! isset ( \$dataresult ['Identity'] ) || clresult ($clresult) !=  itemCount ($itemCount)\n";
 	$errMsg .= "sqlds = $sqlds\nsqlcl = $sqlcl";
-	SP_errorLogging ( $errMsg, true, DART_ERROR_LOG );
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
+	SP_errorLogging($errMsg, true, DART_ERROR_LOG);
+	$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
 	echo $badXML;
-	exit ();
+	exit();
 }
 
 $resultXML = <<< EOT
@@ -106,5 +121,4 @@ EOT;
 $resultXML .= "<truckid>" . $clInfo->truck . "</truckid>\n";
 $resultXML .= "</putstartchecklist>\n";
 echo $resultXML;
-exit ();
-?>
+exit();

@@ -1,9 +1,12 @@
 <?php
+
+use Google\Cloud\Optimization\V1\ShipmentModel\BreakRule;
+
 include_once 'global_CDC.php';
 include_once 'classes_SP/class_ADP_SP.php';
 require_once 'classes_SP/class_PHPMailerSP.php';
 include 'dart_init.php';
-$currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
+$currentScript = basename($_SERVER["SCRIPT_NAME"]);
 
 // On various errors and failures, we'll use the status BAD update XML
 $badXML = <<< EOT
@@ -12,96 +15,111 @@ $badXML = <<< EOT
 </breakstart>
 EOT;
 
+SP_DebugLogging("$currentScript: Starting : POST Values =" . print_r($_POST, true), 'dart_debug');
+
 $postData = '';
-foreach ( $_POST as $key => $val ) {
+foreach ($_POST as $key => $val) {
 	$postData .= $key . "=>" . $val . ", ";
 }
-dartLogging ( $currentScript, "postdata=" . $postData );
+dartLogging($currentScript, "postdata=" . $postData);
 
 // User ID
-$userid = filter_input ( INPUT_POST, 'userid', FILTER_SANITIZE_NUMBER_INT );
-if ($userid == FALSE || is_null ( $userid )) {
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid User ID', $badXML );
+$userid = filter_input(INPUT_POST, 'userid', FILTER_SANITIZE_NUMBER_INT);
+if ($userid == FALSE || is_null($userid)) {
+	$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid User ID', $badXML);
 	echo $badXML;
-	exit ();
+	exit();
 }
 
 // Start Time
-$starttime = filter_input ( INPUT_POST, 'starttime', FILTER_SANITIZE_STRING );
-if ($starttime == FALSE || is_null ( $starttime )) {
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid Start Time', $badXML );
+$starttime = filter_input(INPUT_POST, 'starttime', FILTER_SANITIZE_STRING);
+if ($starttime == FALSE || is_null($starttime)) {
+	$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid Start Time', $badXML);
 	echo $badXML;
-	exit ();
+	exit();
 }
 
 // Break Type
-$breaktype = filter_input ( INPUT_POST, 'breaktype', FILTER_VALIDATE_INT );
-if ($breaktype == FALSE || is_null ( $breaktype ) || ($breaktype != 1 && $breaktype != 2)) {
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid Break Type', $badXML );
+$breaktype = filter_input(INPUT_POST, 'breaktype', FILTER_VALIDATE_INT);
+if ($breaktype == FALSE || is_null($breaktype) || ($breaktype != 1 && $breaktype != 2)) {
+	$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid Break Type', $badXML);
 	echo $badXML;
-	exit ();
+	exit();
 }
 
 // Mileage
 $mileage = 0;
 if ($breaktype == 2) {
-	$mileage = filter_input ( INPUT_POST, 'mileage', FILTER_VALIDATE_INT );
-	if ($mileage == FALSE || is_null ( $mileage )) {
-		$badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid Mileage', $badXML );
+	$mileage = filter_input(INPUT_POST, 'mileage', FILTER_VALIDATE_INT);
+	if ($mileage == FALSE || is_null($mileage)) {
+		$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid Mileage', $badXML);
 		echo $badXML;
-		exit ();
+		exit();
 	}
 }
 
 $sql = '';
 try {
-	$dbh = new PDO ( 'spdb', '', '' );
-	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-	
-	if ($breaktype == 1) {
-		$sql = "uspDARTBreakTime $userid, '" . $starttime . ".000', 1, '', 0";
-	} else {
-		$sql = "uspDARTBreakTime $userid, '" . $starttime . ".000', 1, '', " . $mileage;
+	$dbh = new PDO('spdb', '', '');
+	$dbh->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+	switch ($breaktype) {
+		case 1:
+			$sql = "uspDARTBreakTime $userid, '" . $starttime . ".000', 1, '', 0";
+			break;
+		case 2:
+			$sql = "uspDARTBreakTime $userid, '" . $starttime . ".000', 1, '', " . $mileage;
+			break;
+		case 3:
+			if (strlen($starttime) > 0) {
+				SP_DebugLogging("$currentScript: Would be recording the entered clock punch IN time and sending to ADP.", 'dart_debug');
+			} else {
+				SP_DebugLogging("$currentScript: Would be recording the driver acknowledging they already punched in.", 'dart_debug');
+			}
+			$sql = "select top 10 * from tblSale";
+			break;
+		default:
+			break;
 	}
-	$result = $dbh->exec ( $sql );
-	
+	$result = $dbh->exec($sql);
+
 	$dbh = null;
-} catch ( PDOException $e ) {
-	$errMsg = $e->getFile () . ' (' . $e->getLine () . ')' . $e->getMessage ();
-	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
+} catch (PDOException $e) {
+	$errMsg = $e->getFile() . ' (' . $e->getLine() . ')' . $e->getMessage();
+	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
+	$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
 	echo $badXML;
-	exit ();
+	exit();
 }
 
 if ($result === false) {
 	$errMsg = "$sql returned FALSE";
-	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
+	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
+	$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
 	echo $badXML;
-	exit ();
+	exit();
 }
 
 // Submit to ADP
 try {
-	$badgeID = ADP_SP::getEmployeeBadgeID ( $userid );
+	$badgeID = ADP_SP::getEmployeeBadgeID($userid);
 	if ($badgeID > 0)
-		$punchResult = ADP_SP::submitPunch ( $badgeID, 'lunchout', date ( 'c', strtotime ( $starttime ) ) );
+		$punchResult = ADP_SP::submitPunch($badgeID, 'lunchout', date('c', strtotime($starttime)));
 	// SP_ErrorLogging ( "$currentScript : Submit to ADP : $badgeID : $punchResult", true, DART_ERROR_LOG, 'ADP Submit : lunchout' );
-} catch ( SP_Exception $e ) {
-	$errMsg = "ADP Error : " . $e->getMessage ();
+} catch (SP_Exception $e) {
+	$errMsg = "ADP Error : " . $e->getMessage();
 	$errMsg .= "\nUserID : $userid -- BadgeID : $badgeID -- Start Time : $starttime";
-	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG, 'ADP Submit Punch Error' );
+	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, 'ADP Submit Punch Error');
 	// Email HR
-	$mail = new PHPMailerSP ();
-	$mail->setApiKey ( 'hr' );
-	$mail->isHTML ( false );
+	$mail = new PHPMailerSP();
+	$mail->setApiKey('hr');
+	$mail->isHTML(false);
 	$mail->FromName = "SP System";
 	$mail->From = "itadmin@specialtyproduce.com";
 	$mail->Subject = "ADP Punch Submit Error";
 	$mail->Body = "There was an error submitting a DART Lunch START to ADP.\n\nUserID : $userid -- BadgeID : $badgeID -- Start Time : $starttime";
-	$mail->AddAddress ( "adppuncherrors@specialtyproduce.com" );
-	$mail->Send ();
+	$mail->AddAddress("adppuncherrors@specialtyproduce.com");
+	$mail->Send();
 }
 
 // Generate the XML
@@ -111,4 +129,4 @@ $resultStr = <<< EOT
 </breakstart>
 EOT;
 echo $resultStr;
-exit ();
+exit();

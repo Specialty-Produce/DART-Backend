@@ -19,6 +19,10 @@ dartLogging($currentScript, "postdata=" . $postData, $codeStr);
 
 // User ID
 $userid = filter_input(INPUT_POST, 'userid', FILTER_SANITIZE_NUMBER_INT);
+if (isset($_GET['ah'])) {
+	$userid = 635;
+	$adhoc = true;
+}
 if ($userid == FALSE || is_null($userid)) {
 	$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid User ID', $badXML);
 	echo $badXML;
@@ -30,9 +34,12 @@ try {
 	$dbh->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
 	// There is no difference DEBUG_USER and live driver.
-
 	$stmt = $dbh->query("uspDARTProductStatus");
 	$productStatus = $stmt->fetchAll(PDO::FETCH_BOTH);
+	$stmt->closeCursor();
+
+	$stmt = $dbh->query("uspDARTSentBackDescription");
+	$sentBacks = $stmt->fetchAll(PDO::FETCH_BOTH);
 	$stmt->closeCursor();
 
 	$stmt = $dbh->query("uspDARTOrderStatus");
@@ -65,14 +72,22 @@ try {
 // Generate the XML
 $resultStr = '<?xml version="1.0"?>' . "\n";
 $resultStr .= '<staticinfo status="success">' . "\n";
+// Product Status
 $resultStr .= '<productstatus_entry_list infoname="productstatus">' . "\n";
 foreach ($productStatus as $entry) {
-	$resultStr .= '<entry id="' . $entry['iShortID'] . '">' . mb_convert_encoding($entry['sDescription'], "UTF-8", "Windows-1252") . "</entry>\n";
+	$resultStr .= '	<entry id="' . $entry['iShortID'] . '">' . mb_convert_encoding($entry['sDescription'], "UTF-8", "Windows-1252") . "</entry>\n";
 }
 $resultStr .= "</productstatus_entry_list>\n";
+// Sent Backs
+$resultStr .= '<sentbackstatus_entry_list infoname="sentbackstatus">' . "\n";
+foreach ($sentBacks as $entry) {
+	$resultStr .= '	<entry dsbid="' . $entry['iDSBID'] . '" typeid="' . $entry['iTypeID'] . '" category="' . $entry['sCategory'] . '">' . mb_convert_encoding($entry['sDescription'], "UTF-8", "Windows-1252") . "</entry>\n";
+}
+$resultStr .= "</sentbackstatus_entry_list>\n";
+// Order Status
 $resultStr .= '<orderstatus_entry_list infoname="orderstatus">' . "\n";
 foreach ($orderStatus as $entry) {
-	$resultStr .= '<entry id="' . $entry['iAutoID'] . '">' . mb_convert_encoding($entry['sDescription'], "UTF-8", "Windows-1252") . "</entry>\n";
+	$resultStr .= '	<entry id="' . $entry['iAutoID'] . '">' . mb_convert_encoding($entry['sDescription'], "UTF-8", "Windows-1252") . "</entry>\n";
 }
 $resultStr .= "</orderstatus_entry_list>\n";
 $resultStr .= '<messageaddresses_entry_list infoname="addresses">' . "\n";
@@ -86,7 +101,7 @@ EOT;
 $resultStr .= "</messageaddresses_entry_list>\n";
 $resultStr .= '<driver_entry_list infoname="drivers">' . "\n";
 foreach ($driverList as $entry) {
-	$resultStr .= '<entry id="' . $entry['iUserID'] . '">' . mb_convert_encoding($entry['txtFirstName'], "UTF-8", "Windows-1252") . " " . mb_convert_encoding($entry['txtLastName'], "UTF-8", "Windows-1252") . "</entry>\n";
+	$resultStr .= '	<entry id="' . $entry['iUserID'] . '">' . mb_convert_encoding($entry['txtFirstName'], "UTF-8", "Windows-1252") . " " . mb_convert_encoding($entry['txtLastName'], "UTF-8", "Windows-1252") . "</entry>\n";
 }
 $resultStr .= "</driver_entry_list>\n";
 $resultStr .= "<webservicefilesavedays>5</webservicefilesavedays>\n";
