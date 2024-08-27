@@ -20,8 +20,13 @@ EOT;
 // Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
 $codeStr = generateRandomCode(6);
 
-// TODO : CRC check
-// jsonCRC32
+if (isset($_SERVER['CONTENT_LENGTH'])) {
+	$size = (int) $_SERVER['CONTENT_LENGTH'];
+} else {
+	$size = 0;
+}
+
+// error_log("putpicturedelivery.php : $currentScript : $codeStr : POST Size : " . $size);
 
 // Get the POST data
 if (isset($_POST['jsondata'])) {
@@ -53,10 +58,10 @@ if ($appJSON == FALSE || is_null($appJSON)) {
 // Good to go...
 $jd = json_decode($appJSON);
 if ($jd == FALSE || is_null($jd)) {
-	dartLogging($currentScript, "    decoded jsondata is FALSE or NULL : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'], $codeStr);
+	dartLogging($currentScript, "    decoded jsondata is FALSE or NULL : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . " : " . $appJSON, $codeStr);
 	$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid jsondata supplied', $badXML);
 	echo $badXML;
-	SP_ErrorLogging("Decoded JSON data is invalid for codeStr = $codeStr. Hand fix and adhoc enter data", true, DART_ERROR_LOG, "DART - $currentScript - Invalid JSON data");
+	SP_ErrorLogging("Decoded JSON data is invalid for codeStr = $codeStr.  Size = $size bytes.  Hand fix and adhoc enter data : " . substr($appJSON, 0, 250), true, DART_ERROR_LOG, "DART - $currentScript - Invalid JSON data");
 	exit();
 }
 

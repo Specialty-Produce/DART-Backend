@@ -16,6 +16,7 @@ require_once 'classes_SP/class_InvoiceSP_Simple123.php';
 require_once 'classes_SP/class_InvoiceSP_QSROnline.php';
 require_once 'EDI_SP.php';
 require_once 'classes_SP/class_SP_FTP.php';
+include_once 'classes_SP/class_SP_SFTP.php';
 require_once 'classes_SP/class_PHPMailerSP.php';
 include_once 'classes_SP/class_SendGridSP.php';
 require_once 'classes_SP/class_SRFaxSP.php';
@@ -46,8 +47,13 @@ if ($getSaleID != null && $getSaleID !== false) {
 	$incomingHeaders = getallheaders();
 	if (!isset($incomingHeaders['X-API-Key']) || $incomingHeaders['X-API-Key'] != DART_SENDINVOICE_API_KEY) {
 		SP_ErrorLogging("$currentScript : GET sid sent, $getSaleID, but invalid X-API-Key", true, DART_ERROR_LOG);
+		dartLogging($currentScript, "Called via HTTP : INVALID X-API-Key : sid = " . $getSaleID);
+		$argv = array(
+			'sendinvoice.php',
+			$getSaleID
+		);
 	} else {
-		dartLogging($currentScript, "Called via HTTP : sid = " . $getSaleID);
+		dartLogging($currentScript, "Called via HTTP : VALID X-API-Key : sid = " . $getSaleID);
 		$argv = array(
 			'sendinvoice.php',
 			$getSaleID
@@ -113,6 +119,7 @@ $useCOG = false;
 
 // Get the information on the location associated with these invoices
 $locInfo = array();
+$validSaleIDs = array();
 $sendEmails = array();
 $sendFaxes = array();
 $offLinePOs = array();
@@ -149,13 +156,15 @@ while ($sqlFailed) {
 		// Get the info
 		$stmt = $dbh->query("uspDARTSendInvoiceInfo '" . $invXML . "'");
 		foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+			if (isset($row['LineItemCount']) && $row['LineItemCount'] == 0)
+				continue;
 			$shipDate = date('n/j/Y', strtotime($row['dtShip']));
 			$deliveryDate = date('n/j/Y g:i:s A', strtotime($row['dtDartDelivered']));
 			$isDarkStop = ($row['iSigner'] == DARK_STOP_ID) ? true : false;
 			// Determine if this is an offline PO for an EDI
 			$ediID = trim($row['sInterchangeID']);
 			$parentFTP = ($row['sParentFTPFolder'] == null) ? '' : trim($row['sParentFTPFolder']);
-			$POnumber = trim($row['sPO']);
+			$POnumber = trim($row['sPo']);
 			if (strlen($ediID) > 0 && strlen($POnumber) == 0) {
 				$requireEDIPO = constant('EDISPConsts::' . $ediID . "_REQUIREPO");
 				if ($requireEDIPO != null) {
@@ -192,9 +201,14 @@ while ($sqlFailed) {
 			);
 		}
 		$stmt->closeCursor();
+		if (count($locInfo) == 0) {
+			SP_ErrorLogging("$currentScript : No valid sale IDs found : argv : " . implode(' ', $argv), true, DART_ERROR_LOG);
+			exit();
+		}
+		$validSaleIDs = array_keys($locInfo);
 
 		// Get the emails
-		$sql = "SELECT sEmail, sDescription FROM tblDartInvoiceSendEmails WHERE iLocationID=" . $locInfo[$argv[1]]['id'] . " and sEmail <> 'dontsendinvoices@specialtyproduce.com'";
+		$sql = "SELECT sEmail, sDescription FROM tblDartInvoiceSendEmails WHERE iLocationID=" . $locInfo[$validSaleIDs[0]]['id'] . " and sEmail <> 'dontsendinvoices@specialtyproduce.com'";
 		$stmt = $dbh->query($sql);
 		foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row)
 			$sendEmails[] = array(
@@ -220,7 +234,7 @@ while ($sqlFailed) {
 		}
 
 		// Get the faxes
-		$stmt = $dbh->query("SELECT sFax, sDescription FROM tblDartInvoiceSendFaxes WHERE iLocationID=" . $locInfo[$argv[1]]['id']);
+		$stmt = $dbh->query("SELECT sFax, sDescription FROM tblDartInvoiceSendFaxes WHERE iLocationID=" . $locInfo[$validSaleIDs[0]]['id']);
 		foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row)
 			$sendFaxes[] = array(
 				'name' => $row['sDescription'],
@@ -246,7 +260,7 @@ while ($sqlFailed) {
 		}
 
 		// RSI ID
-		$stmt = $dbh->query("SELECT iRSIID FROM tblDartInvoiceSendRSI WHERE iLocationID=" . $locInfo[$argv[1]]['id']);
+		$stmt = $dbh->query("SELECT iRSIID FROM tblDartInvoiceSendRSI WHERE iLocationID=" . $locInfo[$validSaleIDs[0]]['id']);
 		$result = $stmt->fetch(PDO::FETCH_ASSOC);
 		$rsiID = (is_bool($result) && $result === false) ? 0 : (($result['iRSIID'] > 0) ? $result['iRSIID'] : 0);
 		$stmt->closeCursor();
@@ -257,7 +271,7 @@ while ($sqlFailed) {
 		}
 
 		// Hula ID
-		$stmt = $dbh->query("SELECT iLocationID FROM tblDartInvoiceSendHula WHERE iLocationID=" . $locInfo[$argv[1]]['id']);
+		$stmt = $dbh->query("SELECT iLocationID FROM tblDartInvoiceSendHula WHERE iLocationID=" . $locInfo[$validSaleIDs[0]]['id']);
 		$result = $stmt->fetch(PDO::FETCH_ASSOC);
 		$hulaID = (is_bool($result) && $result === false) ? 0 : (($result['iLocationID'] > 0) ? $result['iLocationID'] : 0);
 		$stmt->closeCursor();
@@ -268,7 +282,7 @@ while ($sqlFailed) {
 		}
 
 		// Profit Pro Plus
-		$stmt = $dbh->query("SELECT iLocationID, tEmails FROM tblDartInvoiceSendProfitProPlus WHERE iLocationID=" . $locInfo[$argv[1]]['id']);
+		$stmt = $dbh->query("SELECT iLocationID, tEmails FROM tblDartInvoiceSendProfitProPlus WHERE iLocationID=" . $locInfo[$validSaleIDs[0]]['id']);
 		$result = $stmt->fetch(PDO::FETCH_ASSOC);
 		$pppEmails = (is_bool($result) && $result === false) ? array() : (($result['iLocationID'] > 0) ? explode(',', $result['tEmails']) : array());
 		$stmt->closeCursor();
@@ -284,7 +298,7 @@ while ($sqlFailed) {
 		}
 
 		// Restaurant 365
-		$stmt = $dbh->query("SELECT sR365ID, ltrim(rtrim(sFTPUsername)) as sFTPUsername, ltrim(rtrim(sFTPPassword)) as sFTPPassword, sFTPFolder FROM tblDartInvoiceSendR365 WHERE iLocationID=" . $locInfo[$argv[1]]['id']);
+		$stmt = $dbh->query("SELECT sR365ID, ltrim(rtrim(sFTPUsername)) as sFTPUsername, ltrim(rtrim(sFTPPassword)) as sFTPPassword, sFTPFolder FROM tblDartInvoiceSendR365 WHERE iLocationID=" . $locInfo[$validSaleIDs[0]]['id']);
 		$r365Data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 		$stmt->closeCursor();
 		if ($adhoc) {
@@ -294,7 +308,7 @@ while ($sqlFailed) {
 		}
 
 		// Bevager
-		$stmt = $dbh->query("SELECT iLocationID FROM tblDartInvoiceSendBevager WHERE iLocationID=" . $locInfo[$argv[1]]['id']);
+		$stmt = $dbh->query("SELECT iLocationID FROM tblDartInvoiceSendBevager WHERE iLocationID=" . $locInfo[$validSaleIDs[0]]['id']);
 		$bevagerIDs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 		$stmt->closeCursor();
 		if ($adhoc) {
@@ -304,7 +318,7 @@ while ($sqlFailed) {
 		}
 
 		// Cheftec
-		$stmt = $dbh->query("SELECT iLocationID, tEmails FROM tblDartInvoiceSendCheftec WHERE iLocationID=" . $locInfo[$argv[1]]['id']);
+		$stmt = $dbh->query("SELECT iLocationID, tEmails FROM tblDartInvoiceSendCheftec WHERE iLocationID=" . $locInfo[$validSaleIDs[0]]['id']);
 		$result = $stmt->fetch(PDO::FETCH_ASSOC);
 		$cheftecEmails = (is_bool($result) && $result === false) ? array() : (($result['iLocationID'] > 0) ? explode(',', $result['tEmails']) : array());
 		$stmt->closeCursor();
@@ -320,7 +334,7 @@ while ($sqlFailed) {
 		}
 
 		// PlateIQ
-		$stmt = $dbh->query("SELECT iLocationID, sEmail, sPODefault FROM tblDartInvoiceSendPlateIQ WHERE bSummaryOnly=0 and iLocationID=" . $locInfo[$argv[1]]['id']);
+		$stmt = $dbh->query("SELECT iLocationID, sEmail, sPODefault FROM tblDartInvoiceSendPlateIQ WHERE bSummaryOnly=0 and iLocationID=" . $locInfo[$validSaleIDs[0]]['id']);
 		$result = $stmt->fetch(PDO::FETCH_ASSOC);
 		$plateIQEmailAddress = (is_bool($result) && $result === false) ? '' : (($result['iLocationID'] > 0) ? $result['sEmail'] : '');
 		$plateIQPODefault = (is_bool($result) && $result === false) ? '' : (($result['iLocationID'] > 0) ? $result['sPODefault'] : '');
@@ -341,7 +355,7 @@ while ($sqlFailed) {
 								end) as iS123LocID
 								FROM tblDARTInvoiceSendSimple123 s
 								LEFT JOIN tblLocationGroupDetail g on g.iLocationID = s.iLocationID
-								WHERE s.iLocationID=" . $locInfo[$argv[1]]['id']);
+								WHERE s.iLocationID=" . $locInfo[$validSaleIDs[0]]['id']);
 		$simple123IDs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 		$stmt->closeCursor();
 		if ($adhoc) {
@@ -351,7 +365,7 @@ while ($sqlFailed) {
 		}
 
 		// QSROnline
-		$stmt = $dbh->query("SELECT iLocationID FROM tblDartInvoiceSendQSROnline WHERE iLocationID=" . $locInfo[$argv[1]]['id']);
+		$stmt = $dbh->query("SELECT iLocationID FROM tblDartInvoiceSendQSROnline WHERE iLocationID=" . $locInfo[$validSaleIDs[0]]['id']);
 		$qsronlineIDs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 		$stmt->closeCursor();
 		if ($adhoc) {
@@ -384,7 +398,7 @@ while ($sqlFailed) {
 
 // Get the COG Accounts information
 try {
-	list($useCOG, $cogShowZeroTotal, $cogMaster, $cogLocation) = LocationSP::getCOGSetup($locInfo[$argv[1]]['id']);
+	list($useCOG, $cogShowZeroTotal, $cogMaster, $cogLocation) = LocationSP::getCOGSetup($locInfo[$validSaleIDs[0]]['id']);
 } catch (SP_Exception $e) {
 	$errorTxt = $e->getFile() . " (" . $e->getLine() . ") : " . $e->getMessage();
 	SP_ErrorLogging($errorTxt, true, DART_ERROR_LOG);
@@ -392,12 +406,12 @@ try {
 }
 
 // Get Product ID COG exceptions
-$cogExceptionProduct = LocationSP::cogGetProductIDExceptions($locInfo[$argv[1]]['id']);
+$cogExceptionProduct = LocationSP::cogGetProductIDExceptions($locInfo[$validSaleIDs[0]]['id']);
 
 // Work through each invoice and save the PDF
 if ($pdfMail || $pdfFax) {
-	for ($i = 1; $i < count($argv); $i++) {
-		$invNum = $argv[$i];
+	for ($i = 0; $i < count($validSaleIDs); $i++) {
+		$invNum = $validSaleIDs[$i];
 
 		// Reset the COG totals
 		if ($useCOG)
@@ -512,7 +526,7 @@ if ($pdfMail || $pdfFax) {
 
 		$logoFile = ($adhoc) ? '../images/sp_logo_lg.jpg' : null;
 		$pdf = new invoicePDF($locInfo[$invNum]['isCloverTransaction'], $logoFile);
-		$qrcFile = ($adhoc) ? '../images/sp_trends_qrcode.png' : null;
+		$qrcFile = ($adhoc) ? '../images/sp_qrcode.png' : null;
 		$pdf->setQRCode($qrcFile);
 		$pdf->setLocation($locInfo[$invNum]['name'], $locInfo[$invNum]['address'], $locInfo[$invNum]['city'], $locInfo[$invNum]['state'], $locInfo[$invNum]['zip'], formatPhone($locInfo[$invNum]['phone']));
 		$pdf->setInvoiceHeader($invNum, $locInfo[$invNum]['shipdate'], $locInfo[$invNum]['salesperson'], formatPhone($locInfo[$invNum]['salesphone']), $locInfo[$invNum]['po'], $locInfo[$invNum]['terms']);
@@ -653,12 +667,12 @@ Specialty Produce
 
 EOT;
 		// Subject line
-		$subjectStr = (count($argv) == 2) ? 'SP Invoice : ' : 'SP Invoices : ';
-		$subjectStr .= $argv[1];
-		$subjectStr .= (strlen($locInfo[$argv[1]]['po']) > 0) ? ' (' . $locInfo[$argv[1]]['po'] . ')' : '';
-		for ($i = 2; $i < count($argv); $i++) {
-			$subjectStr .= ', ' . $argv[$i];
-			$subjectStr .= (strlen($locInfo[$argv[$i]]['po']) > 0) ? ' (' . $locInfo[$argv[$i]]['po'] . ')' : '';
+		$subjectStr = (count($validSaleIDs) > 1) ? 'SP Invoice : ' : 'SP Invoices : ';
+		$subjectStr .= $validSaleIDs[0];
+		$subjectStr .= (strlen($locInfo[$validSaleIDs[0]]['po']) > 0) ? ' (' . $locInfo[$validSaleIDs[0]]['po'] . ')' : '';
+		for ($i = 1; $i < count($validSaleIDs); $i++) {
+			$subjectStr .= ', ' . $validSaleIDs[$i];
+			$subjectStr .= (strlen($locInfo[$validSaleIDs[$i]]['po']) > 0) ? ' (' . $locInfo[$validSaleIDs[$i]]['po'] . ')' : '';
 		}
 		if ($loggingToFile)
 			fwrite($fp, date('[d-M-Y H:i:s]') . " : " . $subjectStr . " -");
@@ -763,7 +777,7 @@ EOT;
 
 // Fax it
 if ($pdfFax) {
-	if ($locInfo[$argv[1]]['id'] > 0) {
+	if ($locInfo[$validSaleIDs[0]]['id'] > 0) {
 		if ($adhoc)
 			echo "Sending PDFs via fax...\n";
 		$faxNumCount = 0;
@@ -789,7 +803,6 @@ if ($pdfFax) {
 if ($processEDIs) {
 	if ($adhoc)
 		echo "Sending via EDI...\n";
-	$ftpConnector = new SP_FTP();
 	try {
 		$azb = new AzureBlobSP('specprodstorage', false);
 		foreach ($locInfo as $loc) {
@@ -892,10 +905,15 @@ EOT;
 				// Set up the ftp connection, if needed
 				$sentSuccessfully = true;
 				if (constant('EDISPConsts::' . $loc['ediID'] . "_SENDFTP")) {
-					$ftpConnector->server = constant('EDISPConsts::' . $loc['ediID'] . "_FTP");
-					$ftpConnector->username = constant('EDISPConsts::' . $loc['ediID'] . "_USERNAME");
-					$ftpConnector->password = constant('EDISPConsts::' . $loc['ediID'] . "_PASSWORD");
 					try {
+						if (constant('EDISPConsts::' . $loc['ediID'] . "_IS_SFTP")) {
+							$ftpConnector = new SP_SFTP(constant('EDISPConsts::' . $loc['ediID'] . "_FTP"), constant('EDISPConsts::' . $loc['ediID'] . "_USERNAME"), constant('EDISPConsts::' . $loc['ediID'] . "_PASSWORD"));
+						} else {
+							$ftpConnector = new SP_FTP();
+							$ftpConnector->server = constant('EDISPConsts::' . $loc['ediID'] . "_FTP");
+							$ftpConnector->username = constant('EDISPConsts::' . $loc['ediID'] . "_USERNAME");
+							$ftpConnector->password = constant('EDISPConsts::' . $loc['ediID'] . "_PASSWORD");
+						}
 						$ftpConnector->sendFile($outPath, $outFileName);
 					} catch (SP_Exception $spe) {
 						SP_ErrorLogging($spe, true, DART_ERROR_LOG, "DART Error : cURL send");
@@ -927,7 +945,7 @@ if ($rsiMail) {
 	if ($adhoc)
 		echo "Sending via RSI...\n";
 	if ($rsiID > 0) {
-		$rsiLocationName = $locInfo[$argv[1]]['name'];
+		$rsiLocationName = $locInfo[$validSaleIDs[0]]['name'];
 		// $rsiMailtoAddress = "xtophersd@yahoo.com";
 		$rsiMailtoAddress = $rsiID . "@restacct.com";
 		$rsiFilename = preg_replace('/[^a-zA-Z0-9]/', '', $rsiLocationName) . '_' . date('Ymd_Hi') . '.txt';
@@ -977,7 +995,7 @@ if ($rsiMail) {
 // 	if ($adhoc)
 // 		echo "Sending via HULA...\n";
 // 	if ($hulaID > 0) {
-// 		$hulaFilenamePrefix = preg_replace('/[^a-zA-Z0-9_-]/', '', preg_replace('/\s/', '_', $locInfo[$argv[1]]['name']));
+// 		$hulaFilenamePrefix = preg_replace('/[^a-zA-Z0-9_-]/', '', preg_replace('/\s/', '_', $locInfo[$validSaleIDs[0]]['name']));
 // 		foreach ($locInfo as $loc) {
 // 			$invHula = new InvoiceHula();
 // 			try {
@@ -1004,7 +1022,7 @@ if ($pppMail) {
 		echo "Sending via PPM...\n";
 	if (count($pppEmails) > 0) {
 		// Start
-		$pppLocationName = $locInfo[$argv[1]]['name'];
+		$pppLocationName = $locInfo[$validSaleIDs[0]]['name'];
 		$mail->FromName = "Specialty Produce Accounting";
 		$mail->From = "ar@specialtyproduce.com";
 		$mail->Subject = "$pppLocationName : Specialty Produce Imported Invoice";
@@ -1121,7 +1139,7 @@ if ($cheftecMail) {
 		echo "Sending via Cheftec...\n";
 	if (count($cheftecEmails) > 0) {
 		// Start
-		$cheftecLocationName = $locInfo[$argv[1]]['name'];
+		$cheftecLocationName = $locInfo[$validSaleIDs[0]]['name'];
 		$mail->FromName = "Specialty Produce Accounting";
 		$mail->From = "ar@specialtyproduce.com";
 		$mail->Subject = "$cheftecLocationName : Specialty Produce Imported Invoice";
@@ -1227,13 +1245,13 @@ if ($plateIQMail) {
 			$mail->FromName = "Specialty Produce Accounting";
 			$mail->From = "ar@specialtyproduce.com";
 			$mail->AddAddress($plateIQEmailAddress);
-			if ($debug)
+			if ($debug || $adhoc)
 				$mail->AddBCC($debugMail, $debugName);
 			$mail->Subject = "Specialty Produce Imported Invoice";
 			$mail->AddReplyTo("ar@specialtyproduce.com", "Specialty Produce Accounting");
 			$mail->AddAttachment($plateIQFile, $plateIQFilename);
 			// Add the body
-			$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " . $locInfo[$argv[1]]['name'] . "\n - Specialty Produce System";
+			$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " . $locInfo[$validSaleIDs[0]]['name'] . "\n - Specialty Produce System";
 			// Send the email
 			if (!$mail->Send()) {
 				$errMsg = "PlateIQ : Send mail error : " . $plateIQEmailAddress;
@@ -1258,7 +1276,7 @@ if ($simple123CSV) {
 		echo "Emailing via Simple123...\n";
 	if (count($simple123IDs) > 0) {
 		$s123LocID = $simple123IDs[0]['iS123LocID'];
-		$s123Filename = $s123LocID . '-invoice-' . date('ymd-His') . '-' . $locInfo[$argv[1]]['id'] . '.csv';
+		$s123Filename = $s123LocID . '-invoice-' . date('ymd-His') . '-' . $locInfo[$validSaleIDs[0]]['id'] . '.csv';
 		$s123File = SPConsts::TempDir . $s123Filename;
 		$s123FH = fopen($s123File, "w");
 		$firstEntry = true;
@@ -1291,7 +1309,7 @@ if ($simple123CSV) {
 			$mail->AddReplyTo("ar@specialtyproduce.com", "Specialty Produce Accounting");
 			$mail->AddAttachment($s123File, $s123Filename);
 			// Add the body
-			$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " . $locInfo[$argv[1]]['name'] . "\n - Specialty Produce System";
+			$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " . $locInfo[$validSaleIDs[0]]['name'] . "\n - Specialty Produce System";
 			// Send the email
 			if (!$mail->Send()) {
 				$errMsg = "Simple123 : Send mail error : " . InvoiceSP_Simple123::EMAIL_RECIPIENT_CSV;
@@ -1318,7 +1336,7 @@ if ($simple123CSV) {
 			foreach ($sIDsToEmail as $saleID)
 				$mail->AddAttachment(DART_PDF_DIR . $saleID . ".pdf", "$saleID.pdf");
 			// Add the body
-			$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " . $locInfo[$argv[1]]['name'] . "\n - Specialty Produce System";
+			$mail->Body = "Dear Sir or Madam,\nAttached is the invoice information for a recent delivery to " . $locInfo[$validSaleIDs[0]]['name'] . "\n - Specialty Produce System";
 			// Send the email
 			if (!$mail->Send()) {
 				$errMsg = "Simple123 : Send mail error : " . InvoiceSP_Simple123::EMAIL_RECIPIENT_PDF;

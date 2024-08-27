@@ -47,6 +47,9 @@ if ($numSaleIDs == 0) {
 	exit();
 }
 
+// $userid = 9215;
+// $saleIDs = array(7277900);
+
 try {
 	$dbh = new PDO('spdb', '', '');
 	$dbh->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -138,15 +141,21 @@ foreach ($invInfo as $item) {
 		$invoiceList[$item['iSaleID']]['items'][] = array(
 			'lineid' => $item['iSaleDetailID'],
 			'prodid' => $item['iProductID'],
-			'proddesc' => mb_convert_encoding($item['sDescription'], "UTF-8", "Windows-1252"),
+			'proddesc' => trim(mb_convert_encoding($item['sDescription'], "UTF-8", "Windows-1252")),
 			'unitid' => $item['iUnitID'],
 			'qorder' => $item['fOrderQuantity'],
 			'qship' => $item['fShipQuantity'],
 			'status' => mb_convert_encoding($item['iShort'], "UTF-8", "Windows-1252"),
 			'itemspec' => mb_convert_encoding($item['sItemNotes'], "UTF-8", "Windows-1252"),
+			// 'salestaxrate' => sprintf("%0.4f", 100 * $item['fTaxRate']),
+			// 'salestaxamount' => sprintf("%0.2f", $item['mTax']),
+			'salestaxrate' => 0.000,
+			'salestaxamount' => 0.00,
 			'greendiscount' => sprintf("%0.2f", 100.0 * ($item['fDiscountOnline'] + $item['fDiscountOnTime']))
 		);
 }
+// error_log("$currentScript : invoiceList=" . json_encode($invoiceList));
+// error_log("$currentScript : priceList=" . json_encode($priceList));
 
 // Generate the XML
 $resultStr = '<?xml version="1.0"?>' . "\n";

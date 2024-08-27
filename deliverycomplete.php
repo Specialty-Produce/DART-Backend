@@ -1,8 +1,23 @@
 <?php
 include_once 'global_CDC.php';
 include_once 'classes_SP/class_AzureFileSP.php';
-include 'dart_init.php';
+
+$codeStr = generateRandomCode(6);
 $currentScript = basename($_SERVER["SCRIPT_NAME"]);
+if (preg_match('/adhoc/', $currentScript)) {
+	$adhoc = true;
+	include '../dart_init.php';
+	echo "Adhoc Mode : $codeStr<br>";
+} else {
+	$adhoc = false;
+	include 'dart_init.php';
+}
+
+if ($adhoc) {
+	/* XXX */
+	echo "Ad Hoc Exiting...";
+	exit();
+}
 
 // On various errors and failures, we'll use the status BAD update XML
 $badXML = <<< EOT
@@ -18,10 +33,8 @@ $successXML = <<< EOT
 EOT;
 
 // Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
-$codeStr = generateRandomCode(6);
 
-// TODO : CRC check
-// jsonCRC32
+error_log("$currentScript : $codeStr : START");
 
 // Get the POST data
 if (isset($_POST['jsondata'])) {
@@ -30,7 +43,17 @@ if (isset($_POST['jsondata'])) {
 	dartLogging($currentScript, "jsondata=" . $appJSON, $codeStr);
 	// dartLogging ( $currentScript, "POST=" . print_r($_POST, true), $codeStr );
 } else {
-	$appJSON = false;
+	if ($adhoc) {
+		$appJSON = file_get_contents('adhoc_dc_json.txt');
+		if ($appJSON === false) {
+			echo "file_get_contents failed on adhoc_dc_json.txt<br>";
+			exit();
+		} else {
+			echo "file_get_contents succeeded on adhoc_dc_json.txt<br>";
+		}
+	} else {
+		$appJSON = false;
+	}
 }
 
 if (isset($_POST['debuginfo'])) {
@@ -55,15 +78,15 @@ if ($appJSON == FALSE || is_null($appJSON)) {
 }
 
 // Truncated appJSON - implies the connection was lost in midtransmission
+// 240411 : CDC : Removed this since the JSON data string apparently is not always organized the same
+/*
 if (!preg_match('/,"userid":"\d+"}$/', $appJSON)) {
 	if (!(preg_match('/^{"userid":"\d+"/', $appJSON) && preg_match('/]}$/', $appJSON))) {
 		dartLogging($currentScript, "    jsondata is TRUNCATED", $codeStr);
 		exit();
 	}
 }
-
-// TODO CRC check
-
+*/
 // Force success for a SaleID that had bad JSON that was fixed and adhoc completed
 $invoiceBadJSON = false;
 if ($invoiceBadJSON !== false && preg_match('/"saleid":"' . $invoiceBadJSON . '"/', $appJSON)) {
@@ -90,11 +113,18 @@ if ($jd == FALSE || is_null($jd)) {
 	}
 }
 
+if ($adhoc) {
+	echo "JSON Data : <br/><pre>" . print_r($jd, true) . "</pre><br/><hr/><br/>";
+}
+
+
 // Done if the DEBUG user
 if ($jd->userid == DEBUG_USERID) {
 	echo $successXML;
 	exit();
 }
+
+$userID = $jd->userid;
 
 // Pull these out for easier reference
 $locationID = $jd->deliveryjson->delivery->locationid;
@@ -134,7 +164,7 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 		$file = $filedir . '/' . $invoice->saleid . ".png";
 		// Create from the encoded string
 		if (!$imgSrc = imagecreatefromstring(base64_decode($invoice->signatureimage))) {
-			$errMsg = "Could not create image from signatureimage data, saleID = " . $invoice->saleid . ", code = " . $codeStr;
+			$errMsg = "Could not create image from signatureimage data, saleID = " . $invoice->saleid . ", code = " . $codeStr . " : file = $file";
 			SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
 			dartLogging($currentScript, "    Could not create image from signatureimage data", $codeStr);
 			$badXML = preg_replace('/XXX/', $currentScript . ' : Could not create image from signatureimage data', $badXML);
@@ -192,15 +222,37 @@ while ($sqlFailed) {
 		$dbh = new PDO('spdb', '', '');
 		$dbh->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-		// Prep for the XML version of invoice list for the stored procedure and collect cancelled invoices
-		$cancelledByCustomerSaleIDs = array();
 		$invXML = "<ROOT>\n";
+		$dsbData = array();
 		foreach ($jd->deliveryjson->invoice_list as $invoice) {
+			if ($adhoc) {
+				echo "Invoice : {$invoice->saleid} : {$invoice->dsbid}";
+			}
+			// DSBID
+			if (isset($invoice->dsbid) && $invoice->dsbid > 0) {
+				$dsbData =  array(
+					'iDSBID' => intval($invoice->dsbid),
+					'iSaleID' => intval($invoice->saleid),
+					'iSaleDetailID' => 0,
+					'dtDate' => date('Y-m-d'),
+					'sNote' => $invoice->dsbNote,
+					'fQty' => 0.0
+				);
+				error_log("$currentScript : $codeStr : INVOICE DSBID > 0 : dsbData JSON String =" . json_encode($dsbData));
+				$invoice->signatureimage = 'xxx';
+				error_log("$currentScript : $codeStr : INVOICE JSON = " . json_encode($invoice));
+				$sql = "uspDartMenuProcess ?";
+				$stmt = $dbh->prepare($sql);
+				$stmt->execute(array(json_encode($dsbData)));
+			}
+
 			$invXML .= '<Rec rID="' . $invoice->saleid . '" dtDelTime="' . $invoice->signtimestamp . '"/>' . "\n";
-			if ($invoice->status == 'CANCELLED BY CUSTOMER')
-				$cancelledByCustomerSaleIDs[] = $invoice->saleid;
 		}
 		$invXML .= "</ROOT>";
+
+		if ($adhoc) {
+			echo "invXML : " . htmlentities($invXML) . "<br>";
+		}
 
 		// Check if this is a repeat call to deliverycomplete.php
 		$repeatCall = false;
@@ -275,18 +327,18 @@ while ($sqlFailed) {
 		$sql = "uspDARTDelivered $updateCode, $signerID, '" . $invXML . "'";
 		$resultDelivered = $dbh->exec($sql);
 
-		// Update any "Cancelled by customer" invoices
-		if (count($cancelledByCustomerSaleIDs) > 0) {
-			// $sql = "????? '" . implode(',', $cancelledByCustomerSaleIDs);
-			// $resultUpdateCancelled = $dbh->exec ( $sql );
-		}
-
 		// We need to build the list of invoices that have lastupdatetime values different between database and ipad
 		$updateAtDeliveryFailXML = '';
 		$saleDetailXML = '';
-		$saleXML = '';
-		$saleJSON = array();
+		$saleGD_JSON = array();
+		$saleST_JSON = array();
+		$userID = $jd->userid;
+		$dsbData = array();
 		foreach ($jd->deliveryjson->invoice_list as $invoice) {
+			// DBSID for invoice > 0 means line items already dealt with...
+			if (isset($invoice->dsbid) && intval($invoice->dsbid) > 0) {
+				continue;
+			}
 			$getAllLines = false;
 			if ($invoice->lastupdatetime != $invTimesDB[$invoice->saleid]) {
 				$getAllLines = true;
@@ -294,18 +346,41 @@ while ($sqlFailed) {
 			}
 			foreach ($invoice->invoice_item_list as $line) {
 				if ($line->edited == "true" || $getAllLines == true) {
-					$editReason = (isset($line->editreason)) ? $line->editreason : '';
-					$saleDetailXML .= '<Rec rID="' . $line->lineid . '" iUnitID="' . $line->finalunitid . '" fQty="' . $line->finalqship . '" mUnitPrice="' . $line->finalunitprice . '" iStatus= "' . $editReason . '"/>' . "\n";
+					$saleDetailXML .= '<Rec rID="' . $line->lineid . '" iUnitID="' . $line->finalunitid . '" fQty="' . $line->finalqship . '" mUnitPrice="' . $line->finalunitprice . '" iStatus= "' . $line->editreason . '"/>' . "\n";
+				}
+				// DSBID
+				if (isset($line->dsbid) && $line->dsbid > 0) {
+					$dsbData =  array(
+						'iDSBID' => intval($line->dsbid),
+						'iSaleID' => intval($invoice->saleid),
+						'iSaleDetailID' => intval($line->lineid),
+						'dtDate' => date('Y-m-d'),
+						'sNote' => $line->dsbNote,
+						'fQty' => floatval($line->finalqship)
+					);
+					error_log("$currentScript : $codeStr : LINE ITEM DSBID > 0 : dsbData JSON String =" . json_encode($dsbData));
+					dartLogging($currentScript, "    LINE ITEM DSBID > 0 : dsbData JSON String =" . json_encode($dsbData), $codeStr);
+					error_log("$currentScript : $codeStr : LINE ITEM JSON = " . json_encode($line));
+					$sql = "uspDartMenuProcess ?";
+					$stmt = $dbh->prepare($sql);
+					$stmt->execute(array(json_encode($dsbData)));
 				}
 			}
 			// Green Discount Updates
 			if ($invoice->greendiscountchanged == "true" || $getAllLines) {
-				$saleXML .= '<Rec rID="' . $invoice->saleid . '" mUnitPrice="' . $invoice->greendiscountfinal . '"/>' . "\n";
 				$gdAmt = preg_replace('/(-)?[^0-9.]/', '', $invoice->greendiscountfinal);
 				$gdAmt = abs($gdAmt) * -1;
-				$saleJSON[] = (object) [
+				$saleGD_JSON[] = (object) [
 					'iSaleID' => $invoice->saleid,
 					'mUnitPrice' => $gdAmt
+				];
+			}
+			// Sales Tax Updates
+			if (isset($invoice->salestaxchanged) && ($invoice->salestaxchanged == "true" || $getAllLines)) {
+				$stAmt = preg_replace('/(-)?[^0-9.]/', '', $invoice->salestaxfinal);
+				$saleST_JSON[] = (object) [
+					'iSaleID' => $invoice->saleid,
+					'mUnitPrice' => $stAmt
 				];
 			}
 		}
@@ -327,15 +402,15 @@ while ($sqlFailed) {
 		}
 		$resultUpdateGreenDiscount = true;
 
-		// if ($saleXML != '') {
-		// 	$saleXML = "<ROOT>\n" . $saleXML . "</ROOT>";
-		// 	dartLogging($currentScript, "    $saleXML=" . $saleXML, $codeStr);
-		// 	$sql = "uspDARTDeliveryCompleteUpdatesGreenDiscount '" . $saleXML . "'";
-		// 	$resultUpdateGreenDiscount = $dbh->exec($sql);
-		// }
-		if (count($saleJSON) > 0) {
-			dartLogging($currentScript, "    saleJSON=" . json_encode($saleJSON), $codeStr);
-			$sql = "uspDARTDeliveryCompleteUpdatesGreenDiscount '" . json_encode($saleJSON) . "'";
+		if (count($saleGD_JSON) > 0) {
+			dartLogging($currentScript, "    saleJSON=" . json_encode($saleGD_JSON), $codeStr);
+			$sql = "uspDARTDeliveryCompleteUpdatesGreenDiscount '" . json_encode($saleGD_JSON) . "'";
+			$resultUpdateGreenDiscount = $dbh->exec($sql);
+		}
+
+		if (count($saleST_JSON) > 0) {
+			dartLogging($currentScript, "    saleJSON=" . json_encode($saleST_JSON), $codeStr);
+			$sql = "uspDARTDeliveryCompleteUpdatesSalesTax '" . json_encode($saleST_JSON) . "'";
 			$resultUpdateGreenDiscount = $dbh->exec($sql);
 		}
 
@@ -347,7 +422,7 @@ while ($sqlFailed) {
 		$errMsg .= "\n\ncodeStr = $codeStr\n";
 		$errMsg .= "invXML =  $invXML\n";
 		$errMsg .= "saleDetailXML =  $saleDetailXML\n";
-		$errMsg .= "saleJSON =  " . json_encode($saleJSON) . "\n";
+		$errMsg .= "saleJSON =  " . json_encode($saleGD_JSON) . "\n";
 		if (preg_match('/Timeout expired/', $eMessage) || preg_match('/SQL Server does not exist or access denied/', $eMessage) || preg_match('/deadlock victim/', $eMessage)) {
 			$sqlParts = explode(' ', $sql);
 			SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, 'DART : DeliveryComplete Retry : ' . $sqlParts[0]);
@@ -399,7 +474,7 @@ if ($resultDeliveryFail === false) {
 }
 
 if ($resultUpdateGreenDiscount === false) {
-	$errMsg = "uspDARTDeliveryCompleteUpdatesGreenDiscount $saleXML returned FALSE : $codeStr";
+	$errMsg = "uspDARTDeliveryCompleteUpdatesGreenDiscount " . json_encode($saleGD_JSON) . " returned FALSE : $codeStr";
 	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
 	dartLogging($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
 	$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
@@ -426,6 +501,8 @@ if (count($jd->new_invoice_ship_today_list) > 0) {
 				$saleID = $row['iSaleID'];
 			}
 			$stmt->closeCursor();
+
+			$dbsArray = array();
 
 			// Add the item to tblSaleDetail
 			$prodID = 0;
@@ -456,6 +533,11 @@ if (count($jd->new_invoice_ship_today_list) > 0) {
 				} else
 					$parentSDID = 0;
 				$stmt->execute();
+
+				// DBSID
+				$dbsid = intval($item->dbsid ?? 0);
+				if ($dbsid > 0)
+					$dbsArray[] = array('dbsid' => $dbsid, 'lineid' => intval($item->lineid), 'userid' => intval($jd->userid));
 			}
 			unset($stmt);
 
@@ -473,6 +555,10 @@ if (count($jd->new_invoice_ship_today_list) > 0) {
 				$stmt->bindParam(':invoiceNum', $saleID);
 				$stmt->execute();
 				unset($stmt);
+			}
+
+			foreach ($dbsArray as $dbEntry) {
+				$dbh->exec("uspDARTSentBackByDriver {$dbEntry['dbsid']}, 0, {$dbEntry['linid']}, {$dbEntry['userid']}");
 			}
 
 			// Alert the salesperson
@@ -524,6 +610,8 @@ if (count($jd->new_invoice_ship_tomorrow_list) > 0) {
 			$dbh = new PDO('spdb', '', '');
 			$dbh->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
+			$dbsArray = array();
+
 			// Get an invoice number
 			$saleID = 0;
 			$sql = "uspWebOOGetInvoiceNumber " . $jd->deliveryjson->delivery->locationid . ", '" . date('n/j/Y', strtotime("tomorrow")) . "'";
@@ -562,6 +650,11 @@ if (count($jd->new_invoice_ship_tomorrow_list) > 0) {
 				} else
 					$parentSDID = 0;
 				$stmt->execute();
+
+				// DBSID
+				$dbsid = intval($item->dbsid);
+				if ($dbsid > 0)
+					$dbsArray[] = array('dbsid' => $dbsid, 'lineid' => intval($item->lineid), 'userid' => intval($jd->userid));
 			}
 			unset($stmt);
 
@@ -579,6 +672,10 @@ if (count($jd->new_invoice_ship_tomorrow_list) > 0) {
 				$stmt->bindParam(':invoiceNum', $saleID);
 				$stmt->execute();
 				unset($stmt);
+			}
+
+			foreach ($dbsArray as $dbEntry) {
+				$dbh->exec("uspDARTSentBackByDriver {$dbEntry['dbsid']}, 0, {$dbEntry['linid']}, {$dbEntry['userid']}");
 			}
 
 			// Alert the salesperson
@@ -625,9 +722,15 @@ if ($signerID != PRINTED_INVOICE_ID) {
 	$invoiceStr = '';
 	foreach ($jd->deliveryjson->invoice_list as $invoice)
 		$invoiceStr .= " " . $invoice->saleid;
-	shell_exec('php sendinvoice.php' . $invoiceStr . ' > /dev/null 2>&1 &');
+	if ($adhoc) {
+		echo "Would call : php sendinvoice.php" . $invoiceStr;
+	} else {
+		shell_exec('php sendinvoice.php' . $invoiceStr . ' > /dev/null 2>&1 &');
+	}
 }
 
 echo $successXML;
 dartLogging($currentScript, "  Success : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'], $codeStr);
+
+error_log("$currentScript : $codeStr : END");
 exit();

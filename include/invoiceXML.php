@@ -27,6 +27,8 @@ foreach ($invoiceList as $inv) {
         $resultStr .= "<status>" . $item['status'] . "</status>\n";
         $resultStr .= "<itemspec>" . $item['itemspec'] . "</itemspec>\n";
         $resultStr .= "<greendiscount>" . $item['greendiscount'] . "</greendiscount>\n";
+        $resultStr .= "<salestaxrate>" . $item['salestaxrate'] . "</salestaxrate>\n";
+        $resultStr .= "<salestaxamount>" . $item['salestaxamount'] . "</salestaxamount>\n";
         $resultStr .= "<pricing_unit_list>\n";
         foreach ($priceList[$item['lineid']] as $unitID => $entry) {
             $resultStr .= '<unit id="' . $unitID . '">' . "\n";

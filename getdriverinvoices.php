@@ -96,15 +96,21 @@ foreach ($invInfo as $item) {
 		$invoiceList[$item['iSaleID']]['items'][] = array(
 			'lineid' => $item['iSaleDetailID'],
 			'prodid' => $item['iProductID'],
-			'proddesc' => mb_convert_encoding($item['sDescription'], "UTF-8", "Windows-1252"),
+			'proddesc' => trim(mb_convert_encoding($item['sDescription'], "UTF-8", "Windows-1252")),
 			'unitid' => $item['iUnitID'],
 			'qorder' => $item['fOrderQuantity'],
 			'qship' => $item['fShipQuantity'],
 			'status' => $item['iShort'],
 			'itemspec' => DART_escapeXmlString(mb_convert_encoding($item['sItemNotes'], "UTF-8", "Windows-1252")),
+			// 'salestaxrate' => sprintf("%0.4f", 100 * $item['fTaxRate']),
+			// 'salestaxamount' => sprintf("%0.2f", $item['mTax']),
+			'salestaxrate' => 0.000,
+			'salestaxamount' => 0.00,
 			'greendiscount' => sprintf("%0.2f", 100.0 * ($item['fDiscountOnline'] + $item['fDiscountOnTime']))
 		);
 }
+// error_log("$currentScript : invoiceList=" . json_encode($invoiceList));
+// error_log("$currentScript : priceList=" . json_encode($priceList));
 // add greendiscount from getinvoices.php
 /*
  * echo "<pre>\n"; echo "ROUTEINFO\n"; print_r($routeInfo); echo "\n-----------------------------------------------------------------\n"; echo "INVINFO\n"; print_r($invInfo); echo "\n-----------------------------------------------------------------\n"; echo "PRICELIST\n"; print_r($priceList); echo "\n-----------------------------------------------------------------\n"; echo "INVOICELIST\n"; print_r($invoiceList); echo "</pre>\n";

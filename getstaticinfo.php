@@ -60,6 +60,11 @@ try {
 	$crvList = $stmt->fetchAll(PDO::FETCH_BOTH);
 	$stmt->closeCursor();
 
+	$sql = "uspDartMenu";
+	$stmt = $dbh->query($sql);
+	$menuList = $stmt->fetchAll(PDO::FETCH_BOTH);
+	$stmt->closeCursor();
+
 	$dbh = null;
 } catch (PDOException $e) {
 	$errMsg = $e->getFile() . ' (' . $e->getLine() . ')' . $e->getMessage();
@@ -117,6 +122,26 @@ foreach ($crvList as $entry) {
 	$resultStr .= '		<entry id="' . $entry['iProductID'] . '">' . sprintf("%0.2f", $entry['mUnitPrice']) . "</entry>\n";
 }
 $resultStr .= "</crv_entry_list>\n";
+
+$resultStr .= "<menu_red_x_list>\n";
+foreach ($menuList as $entry) {
+	if ($entry['iTypeID'] != 1) {
+		continue;
+	}
+	$jsActions = json_decode($entry['sAction'], true);
+	$resultStr .= '		<entry dsbid="' . $entry['iDSBID'] . '" actions="' . implode(',', $jsActions) . '" notes="' . $entry['sNotes'] . '" notesspanish="' . $entry['sNoteSpanish'] . '">' . $entry['sDescription'] . "</entry>\n";
+}
+$resultStr .= "</menu_red_x_list>\n";
+
+$resultStr .= "<menu_line_item_list>\n";
+foreach ($menuList as $entry) {
+	if ($entry['iTypeID'] == 1) {
+		continue;
+	}
+	$jsActions = json_decode($entry['sAction'], true);
+	$resultStr .= '		<entry dsbid="' . $entry['iDSBID'] . '" actions="' . implode(',', $jsActions) . '" notes="' . $entry['sNotes'] . '" notesspanish="' . $entry['sNoteSpanish'] . '">' . $entry['sDescription'] . "</entry>\n";
+}
+$resultStr .= "</menu_line_item_list>\n";
 
 $resultStr .= "</staticinfo>";
 echo $resultStr;

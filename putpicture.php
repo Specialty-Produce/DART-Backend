@@ -62,6 +62,7 @@ if ($jd == FALSE || is_null($jd)) {
 
 // Process the image
 $fileName = $jd->lineitemid . ".png";
+dartLogging($currentScript, "Image: $fileName", $codeStr);
 $filePath = SPConsts::TempDir . $fileName;
 // Create from the encoded string
 if (!$imgSrc = imagecreatefromstring(base64_decode($jd->productimage))) {
