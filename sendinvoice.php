@@ -1,18 +1,24 @@
 <?php
-// exit ();
 require_once 'global_CDC.php';
-require_once 'dart_init.php';
+$currentScript = basename($_SERVER["SCRIPT_NAME"]);
+if (preg_match('/adhoc/', $currentScript)) {
+	$adhoc = true;
+	require_once '../dart_init.php';
+} else {
+	$adhoc = false;
+	require_once 'dart_init.php';
+}
 require_once 'classes_SP/class_LocationSP.php';
 require_once 'classes_SP/class_invoicePDF.php';
-require_once 'classes_SP/class_InvoiceRSI.php';
+// require_once 'classes_SP/class_InvoiceRSI.php';
 // Hula Software became Restuarant Matrix - I changed the FTP folder but otherwise left the Hula naming scheme
-require_once 'classes_SP/class_InvoiceHula.php';
-require_once 'classes_SP/class_InvoiceProfitProPlus.php';
+// require_once 'classes_SP/class_InvoiceHula.php';
+// require_once 'classes_SP/class_InvoiceProfitProPlus.php';
+// require_once 'classes_SP/class_InvoiceBevager.php';
+// require_once 'classes_SP/class_InvoiceCheftec.php';
+// require_once 'classes_SP/class_InvoiceSP_Simple123.php';
 require_once 'classes_SP/class_InvoiceR365.php';
-require_once 'classes_SP/class_InvoiceBevager.php';
-require_once 'classes_SP/class_InvoiceCheftec.php';
 require_once 'classes_SP/class_InvoicePlateIQ.php';
-require_once 'classes_SP/class_InvoiceSP_Simple123.php';
 require_once 'classes_SP/class_InvoiceSP_QSROnline.php';
 require_once 'EDI_SP.php';
 require_once 'classes_SP/class_SP_FTP.php';
@@ -22,6 +28,7 @@ include_once 'classes_SP/class_SendGridSP.php';
 require_once 'classes_SP/class_SRFaxSP.php';
 require_once 'classes_SP/class_AzureBlobSP.php';
 include_once 'classes_SP/class_AzureFileSP.php';
+
 function sortLineItems($a, $b) {
 	global $useCOG;
 	if ($useCOG) {
@@ -33,12 +40,6 @@ function sortLineItems($a, $b) {
 	} else
 		return strnatcmp($a['description'], $b['description']);
 }
-
-$currentScript = basename($_SERVER["SCRIPT_NAME"]);
-if (preg_match('/adhoc/', $currentScript))
-	$adhoc = true;
-else
-	$adhoc = false;
 
 // Are we coming via a GET
 $getSaleID = filter_input(INPUT_GET, 'sid', FILTER_VALIDATE_INT);
@@ -69,15 +70,14 @@ $debugFax = '';
 $pdfMail = true;
 $pdfFax = true;
 $processEDIs = true;
-$rsiMail = true;
-// Removed since no locations are using it, tblDartInvoiceSendHula, and need to reconfigure directories
-$hulaMail = false;
-$pppMail = true;
+$rsiMail = false; // Company out of business
+$hulaMail = false; // Removed since no locations are using it, tblDartInvoiceSendHula, and need to reconfigure directories
+$pppMail = false; // Company out of business
 $bevagerFTP = false; // Not been used in 3 months - disable - AZURE update if this is getting turned back on!!!
+$cheftecMail = false; // Have not sold to the single location since 11/2020
+$simple123CSV = false; // No locations in tblDARTInvoiceSendSimple123
 $r365FTP = true;
-$cheftecMail = true;
 $plateIQMail = true;
-$simple123CSV = true;
 $qsronlineCSV = true;
 
 // $resendArray = array (3123888,3123662,3123908,3123956,3123321);
@@ -98,15 +98,14 @@ if ($adhoc) {
 	$pdfMail = false;
 	$pdfFax = false;
 	$processEDIs = false;
-	$rsiMail = false;
-	// Removed since no locations are using it, tblDartInvoiceSendHula, and need to reconfigure directories
-	$hulaMail = false;
-	$pppMail = false;
+	$rsiMail = false; // Company out of business
+	$hulaMail = false; // Removed since no locations are using it, tblDartInvoiceSendHula, and need to reconfigure directories
+	$pppMail = false; // Company out of business
 	$bevagerFTP = false; // Not been used in 3 months - disable - AZURE update if this is getting turned back on!!!
+	$cheftecMail = false; // Have not sold to the single location since 11/2020
+	$simple123CSV = false; // No locations in tblDARTInvoiceSendSimple123
 	$r365FTP = false;
-	$cheftecMail = false;
 	$plateIQMail = false;
-	$simple123CSV = false;
 	$qsronlineCSV = false;
 }
 
@@ -421,6 +420,8 @@ if ($pdfMail || $pdfFax) {
 			}
 
 		$lineItems = array();
+		$salesTax = 0.0;
+		$greenDiscount = 0.0;
 		$invTotal = 0.0;
 		$trackInvoiceEdits = array();
 		$sqlFailed = true;
@@ -438,6 +439,15 @@ if ($pdfMail || $pdfFax) {
 				foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
 					$itemTotal = preg_replace('/^\$/', '', $row['Total']);
 					$invTotal += $itemTotal;
+					if ($row['iProductID'] == InvoicePDF::SALES_TAX_PRODUCT_ID) {
+						$salesTax = $itemTotal;
+						continue;
+					}
+					if ($row['iProductID'] == InvoicePDF::GREEN_DISCOUNT_PRODUCT_ID) {
+						$greenDiscount = $itemTotal;
+						if (! $useCOG)
+							continue;
+					}
 					if ($useCOG) {
 						$cogID = (array_key_exists($row['iProductID'], $cogExceptionProduct)) ? $cogExceptionProduct[$row['iProductID']] : $row['iCOGMasterID'];
 						$cogAccount = ($cogMaster[$cogID] != null && $cogMaster[$cogID] != 0) ? $cogMaster[$cogID] : 0;
@@ -446,31 +456,17 @@ if ($pdfMail || $pdfFax) {
 					} else {
 						$cogAccount = '';
 					}
-					if ($row['iProductID'] == 9997)
-						$lineItems[] = array(
-							'prodID' => 9997,
-							'unitID' => 'ea',
-							'description' => 'Green Discount ...',
-							'ordered' => 1,
-							'shipped' => 1,
-							'unitPrice' => sprintf("%0.2f", $itemTotal),
-							'itemTotal' => $itemTotal,
-							'status' => '',
-							'cogAccount' => $cogAccount,
-							'itemNotes' => ''
-						);
-					else
-						$lineItems[] = array(
-							'description' => $row['Description'],
-							'ordered' => round($row['fOrderQuantity'], 2),
-							'shipped' => round($row['fShipQuantity'], 2),
-							'unitPrice' => sprintf("%0.2f", $row['mUnitPrice']),
-							'itemTotal' => $itemTotal,
-							'status' => $row['Status'],
-							'prodID' => $row['iProductID'],
-							'cogAccount' => $cogAccount,
-							'itemNotes' => trim($row['sItemNotes'])
-						);
+					$lineItems[] = array(
+						'description' => $row['Description'],
+						'ordered' => round($row['fOrderQuantity'], 2),
+						'shipped' => round($row['fShipQuantity'], 2),
+						'unitPrice' => sprintf("%0.2f", $row['mUnitPrice']),
+						'itemTotal' => $itemTotal,
+						'status' => $row['Status'],
+						'prodID' => $row['iProductID'],
+						'cogAccount' => $cogAccount,
+						'itemNotes' => trim($row['sItemNotes'])
+					);
 				}
 				$stmt->closeCursor();
 
@@ -526,7 +522,7 @@ if ($pdfMail || $pdfFax) {
 
 		$logoFile = ($adhoc) ? '../images/sp_logo_lg.jpg' : null;
 		$pdf = new invoicePDF($locInfo[$invNum]['isCloverTransaction'], $logoFile);
-		$qrcFile = ($adhoc) ? '../images/sp_qrcode.png' : null;
+		$qrcFile = ($adhoc) ? '../images/isn_qrcode.png' : null;
 		$pdf->setQRCode($qrcFile);
 		$pdf->setLocation($locInfo[$invNum]['name'], $locInfo[$invNum]['address'], $locInfo[$invNum]['city'], $locInfo[$invNum]['state'], $locInfo[$invNum]['zip'], formatPhone($locInfo[$invNum]['phone']));
 		$pdf->setInvoiceHeader($invNum, $locInfo[$invNum]['shipdate'], $locInfo[$invNum]['salesperson'], formatPhone($locInfo[$invNum]['salesphone']), $locInfo[$invNum]['po'], $locInfo[$invNum]['terms']);
@@ -542,6 +538,11 @@ if ($pdfMail || $pdfFax) {
 			}
 			$pdf->addLineItem($line['description'], $line['ordered'], $line['shipped'], $line['unitPrice'], $line['itemTotal'], $line['status'], $line['prodID'], $line['itemNotes']);
 		}
+		// Green Discount
+		if ($greenDiscount < 0.0 && ! $useCOG)
+			$pdf->addGreenDiscount($greenDiscount);
+		// Sales Tax
+		$pdf->addSalesTax($salesTax);
 		// Invoice Total
 		if ($pdf->checkNoSpaceLeft(0.2))
 			$pdf->markContinued();

@@ -76,20 +76,27 @@ if ($gpslon == FALSE || is_null($gpslon)) {
 }
 
 // Note
-$appendNote = '';
-$note = filter_input(INPUT_POST, 'note', FILTER_SANITIZE_STRING);
-if ($note == FALSE || is_null($note)) {
-	$note = "<not set>";
+$locNote = '';
+$note = filter_input(INPUT_POST, 'note');
+if ($note === FALSE || is_null($note)) {
+	$note = false;
+	dartLogging($currentScript, "note is FALSE or NULL");
 } else {
-	if (strlen(trim($note)) > 0)
-		$appendNote = trim($note);
+	$locNote = preg_replace('/\s+/', ' ', preg_replace('/[<>]/', '', trim($note)));
+	$note = true;
+	dartLogging($currentScript, "note ->$locNote<-");
 }
 
 // Update the GPS information
 try {
-	if ($gpslat > 0 && $gpslon > 0)
+	if (abs($gpslat) > 0 && abs($gpslon) > 0) {
 		LocationSP::updateGPS($locationID, $gpslat, $gpslon);
-	LocationSP::updateLocationNote($locationID, $appendNote);
+	}
+	if ($note) {
+		// Archive old note
+		LocationSP::archiveLocationNote($locationID, $username);
+		LocationSP::updateLocationNote($locationID, $locNote);
+	}
 } catch (SP_Exception $e) {
 	$errMsg = $e->getFile() . ' (' . $e->getLine() . ')' . $e->getMessage();
 	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, 'DART : Update GPS Error!');
@@ -102,11 +109,8 @@ $mail->setApiKey('acct');
 $mail->FromName = "DART System";
 $mail->From = "itadmin@specialtyproduce.com";
 $mail->Subject = "Location GPS/Note Update";
-// $mail->AddAddress("christopher@specialtyproduce.com", "Christopher Cilley");
 $mail->AddAddress($contactInfo['DefaultEmail'], $contactInfo['DefaultName']);
-$mail->AddCC("roger@specialtyproduce.com", "Roger Harrington");
-$mail->AddCC("chaohe@specialtyproduce.com", "Chao He");
-$mail->AddCC("fridav@specialtyproduce.com", "Frida Valenzuela");
+// $mail->AddBCC("christopher@specialtyproduce.com", "Christopher Cilley");
 
 $mail->Body = $contactInfo['DefaultName'] . ",\n\n";
 $mail->Body .= "A request to update a location's GPS information and/or Note has been submitted.\n\n";
@@ -116,16 +120,13 @@ $mail->Body .= "Location : $locationName\n";
 $mail->Body .= "Location ID : $locationID\n";
 $mail->Body .= "GPS Latitude : $gpslat\n";
 $mail->Body .= "GPS Longitude : $gpslon\n";
-$mail->Body .= "Note : \n$note\n";
-if (strlen($appendNote) > 0) {
-	$mail->Body .= "***** Driver's note has been appended to the location's notes *****\n";
-	$mail->Body .= "Please be sure to review the updated note using the Access Editors (see attached screenshots).\n";
-	$mail->addAttachment("images/NoteEditor.png", "NoteEditor.png");
-	$mail->addAttachment("images/NoteInvoice.png", "NoteInvoice.png");
-}
+$mail->Body .= "Note : \n" . ((strlen($locNote) == 0) ? '<empty note - deleted>' : $locNote) . "\n";
+$mail->Body .= "\nPlease be sure to review the updated info using the Access Editors (see attached screenshots).\n";
+$mail->addAttachment("images/NoteEditor.png", "NoteEditor.png");
+$mail->addAttachment("images/NoteInvoice.png", "NoteInvoice.png");
 $mail->Body .= "\nSession ID : $sessionID\n";
 $mail->Body .= "iPad ID : $ipadID\n";
-// $mail->Body .= "\n\nDebug information : POST DATA : \n" . print_r($_POST, true) . "\n\n";
+$mail->Body .= "\n\n----------\nDebug information : POST DATA : \n" . print_r($_POST, true) . "\n\n";
 
 if (!$mail->Send()) {
 	SP_ErrorLogging("Error sending email for $currentScript", true, DART_ERROR_LOG);

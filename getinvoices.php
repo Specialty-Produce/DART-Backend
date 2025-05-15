@@ -10,34 +10,40 @@ $badXML = <<< EOT
 </invoices_invoice_list>
 EOT;
 
-// Get the POST data
-$appJSON = $_POST['jsondata'];
-dartLogging($currentScript, "jsondata=" . $appJSON);
+if (isset($_GET['uid']) && isset($_GET['sids'])) {
+	$userid = trim(filter_input(INPUT_GET, 'uid', FILTER_VALIDATE_INT));
+	$sIDs = trim(filter_input(INPUT_GET, 'sids'));
+	$saleIDs = explode(',', $sIDs);
+} else {
+	// Get the POST data
+	$appJSON = $_POST['jsondata'];
+	dartLogging($currentScript, "jsondata=" . $appJSON);
 
-// appJSON
-if ($appJSON == FALSE || is_null($appJSON)) {
-	$badXML = preg_replace('/XXX/', $currentScript . ' : No jsondata supplied', $badXML);
-	echo $badXML;
-	exit();
-}
+	// appJSON
+	if ($appJSON == FALSE || is_null($appJSON)) {
+		$badXML = preg_replace('/XXX/', $currentScript . ' : No jsondata supplied', $badXML);
+		echo $badXML;
+		exit();
+	}
 
-$jd = json_decode($appJSON);
-// userid
-$userid = filter_var($jd->userid, FILTER_SANITIZE_NUMBER_INT);
-if ($userid == FALSE || is_null($userid)) {
-	$badXML = preg_replace('/XXX/', $currentScript . ' : No userid', $badXML);
-	echo $badXML;
-	exit();
-}
+	$jd = json_decode($appJSON);
+	// userid
+	$userid = filter_var($jd->userid, FILTER_SANITIZE_NUMBER_INT);
+	if ($userid == FALSE || is_null($userid)) {
+		$badXML = preg_replace('/XXX/', $currentScript . ' : No userid', $badXML);
+		echo $badXML;
+		exit();
+	}
 
-// invJSON
-$invJSON = $jd->invoicesjson;
-if ($invJSON == FALSE || is_null($invJSON)) {
-	$badXML = preg_replace('/XXX/', $currentScript . ' : No saleids JSON', $badXML);
-	echo $badXML;
-	exit();
+	// invJSON
+	$invJSON = $jd->invoicesjson;
+	if ($invJSON == FALSE || is_null($invJSON)) {
+		$badXML = preg_replace('/XXX/', $currentScript . ' : No saleids JSON', $badXML);
+		echo $badXML;
+		exit();
+	}
+	$saleIDs = json_decode($invJSON);
 }
-$saleIDs = json_decode($invJSON);
 
 // Check for invoices
 $numSaleIDs = count($saleIDs);
@@ -46,9 +52,6 @@ if ($numSaleIDs == 0) {
 	echo $badXML;
 	exit();
 }
-
-// $userid = 9215;
-// $saleIDs = array(7277900);
 
 try {
 	$dbh = new PDO('spdb', '', '');
@@ -88,7 +91,7 @@ try {
 			$invXML .= '<Rec rID = "' . $id . '"/>' . "\n";
 		$invXML .= "</ROOT>\n";
 		// Get the invoice data
-		$sql = "uspDARTGetInvoices '" . $invXML . "'";
+		$sql = "uspDARTGetInvoicesDev2 '" . $invXML . "'";
 		$stmt = $dbh->query($sql);
 		$invInfo = $stmt->fetchAll(PDO::FETCH_BOTH);
 		$stmt->closeCursor();
@@ -116,7 +119,7 @@ foreach ($routeInfo as $entry) {
 			'date' => strftime("%m/%d/%Y"),
 			'lastupdate' => $lastUpdate,
 			'notes' => mb_convert_encoding($entry['txtInvoiceNotes'], "UTF-8", "Windows-1252"),
-			'po' => mb_convert_encoding($entry['sPO'], "UTF-8", "Windows-1252"),
+			'po' => mb_convert_encoding($entry['sPo'], "UTF-8", "Windows-1252"),
 			'terms' => mb_convert_encoding($entry['sTerms'], "UTF-8", "Windows-1252"),
 			'packerlocation' => $packerLocation
 		);
@@ -136,6 +139,8 @@ foreach ($invInfo as $item) {
 		'crvID' => $item['iCRVProductID'],
 		'crvPrice' => $item['mCRVPrice']
 	);
+	$salesTaxRate = sprintf("%0.4f", 100 * $item['fTaxRate']);
+	$salestaxAmount = sprintf("%0.2f", $item['mTax']);
 	// Only add to the invoice the actual unitID set items
 	if ($item['iInvoiceDefault'] == 1)
 		$invoiceList[$item['iSaleID']]['items'][] = array(
@@ -146,11 +151,9 @@ foreach ($invInfo as $item) {
 			'qorder' => $item['fOrderQuantity'],
 			'qship' => $item['fShipQuantity'],
 			'status' => mb_convert_encoding($item['iShort'], "UTF-8", "Windows-1252"),
-			'itemspec' => mb_convert_encoding($item['sItemNotes'], "UTF-8", "Windows-1252"),
-			// 'salestaxrate' => sprintf("%0.4f", 100 * $item['fTaxRate']),
-			// 'salestaxamount' => sprintf("%0.2f", $item['mTax']),
-			'salestaxrate' => 0.000,
-			'salestaxamount' => 0.00,
+			'itemspec' => DART_escapeXmlString(mb_convert_encoding($item['sItemNotes'], "UTF-8", "Windows-1252")),
+			'salestaxrate' => $salesTaxRate,
+			'salestaxamount' => $salestaxAmount,
 			'greendiscount' => sprintf("%0.2f", 100.0 * ($item['fDiscountOnline'] + $item['fDiscountOnTime']))
 		);
 }

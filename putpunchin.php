@@ -1,6 +1,6 @@
 <?php
 include_once 'global_CDC.php';
-include_once 'classes_SP/class_ADP_SP.php';
+include_once 'classes_SP/class_ADPWFN_SP.php';
 require_once 'classes_SP/class_PHPMailerSP.php';
 include 'dart_init.php';
 $currentScript = basename($_SERVER["SCRIPT_NAME"]);
@@ -53,10 +53,11 @@ if ($response == 0) {
     while ($adpFailed) {
         $adpFailed = false;
         try {
-            $badgeID = ADP_SP::getEmployeeBadgeID($userid);
-            if ($badgeID > 0)
-                $punchResult = ADP_SP::submitPunch($badgeID, 'clockin', date('c', strtotime($punchtime)));
-            SP_ErrorLogging("$currentScript : Submit to ADP : $badgeID : $punchResult", true, DART_ERROR_LOG, 'ADP Submit : clockin');
+            $personNumber = ADPWFN_SP::getPersonNumberByUserID($userid);
+            if ($personNumber != FALSE) {
+                $punchResult = ADPWFN_SP::submitPunch($personNumber, 'in', $punchtime, 'Dart In');
+                SP_DebugLogging("$currentScript: ADPWFN_SP::submitPunch : $personNumber, 'clockin', $starttime, 'dart' : $punchResult", 'cdc_adpwfn');
+            }
         } catch (SP_Exception $e) {
             if ($adpAttemptCount < 3) {
                 $adpAttemptCount++;
@@ -80,6 +81,30 @@ if ($response == 0) {
                 $adpResult = 0;
             }
         }
+    }
+
+    // Submit to ADP WFN
+    $personNumber = '';
+    try {
+        $personNumber = ADPWFN_SP::getPersonNumberByUserID($userid);
+        if ($personNumber != FALSE) {
+            $punchResult = ADPWFN_SP::submitPunch($personNumber, 'in', $endtime, 'dart');
+            // SP_DebugLogging("$currentScript: ADPWFN_SP::submitPunch : $personNumber, 'in', $endtime, 'dart' : $punchResult", 'cdc_adpwfn');
+        }
+    } catch (SP_Exception $e) {
+        $errMsg = "ADP WFN Error : " . $e->getMessage();
+        $errMsg .= "\nUserID : $userid -- Person Number : $personNumber -- END Time : $endtime";
+        SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, 'ADP WFN Submit Punch Error');
+        // Email HR
+        $mail = new PHPMailerSP();
+        $mail->setApiKey('hr');
+        $mail->isHTML(false);
+        $mail->FromName = "SP System";
+        $mail->From = "itadmin@specialtyproduce.com";
+        $mail->Subject = "ADP WFN Punch Submit Error";
+        $mail->Body = "There was an error submitting a DART Timeclock Punch In to ADP WFN.\n\nUserID : $userid -- Person Number : $personNumber -- End Time : $endtime";
+        $mail->AddAddress("adppuncherrors@specialtyproduce.com");
+        $mail->Send();
     }
 } else {
     $punchtime = null;

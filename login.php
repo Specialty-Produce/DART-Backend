@@ -1,6 +1,6 @@
 <?php
 include_once 'global_CDC.php';
-include_once 'classes_SP/class_ADP_SP.php';
+include_once 'classes_SP/class_ADPWFN_SP.php';
 include 'dart_init.php';
 $currentScript = basename($_SERVER["SCRIPT_NAME"]);
 
@@ -96,7 +96,7 @@ try {
 $punchTS = '';
 try {
 	$nowDT = new DateTime();
-	$punches = ADP_SP::getPunchesByUserIDs(array($userID), $nowDT->format('Y-m-d'));
+	$punches = ADPWFN_SP::getPunchesByUserIDs(array($userID), $nowDT->format('Y-m-d'));
 	if (array_key_exists($userID, $punches)) {
 		if ($punches[$userID][0]['type'] == 1) {
 			$pTimeParts = explode(':', $punches[$userID][0]['time']);

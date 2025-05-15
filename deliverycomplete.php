@@ -34,13 +34,13 @@ EOT;
 
 // Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
 
-error_log("$currentScript : $codeStr : START");
+// error_log("$currentScript : $codeStr : START");
 
 // Get the POST data
 if (isset($_POST['jsondata'])) {
 	$appJSON = $_POST['jsondata'];
 	// dartLogging ( $currentScript, "jsondata=" . (preg_replace ( '/(,"signatureimage":")[^"]+(","status")/', '$1 --- $2', $appJSON )), $codeStr );
-	dartLogging($currentScript, "jsondata=" . $appJSON, $codeStr);
+	dartLoggingHour($currentScript, "jsondata=" . $appJSON, $codeStr);
 	// dartLogging ( $currentScript, "POST=" . print_r($_POST, true), $codeStr );
 } else {
 	if ($adhoc) {
@@ -57,20 +57,20 @@ if (isset($_POST['jsondata'])) {
 }
 
 if (isset($_POST['debuginfo'])) {
-	dartLogging($currentScript, "debuginfo=" . $_POST['debuginfo'], $codeStr);
+	dartLoggingHour($currentScript, "debuginfo=" . $_POST['debuginfo'], $codeStr);
 }
 
 if (MAINTENANCE_MODE) {
 	$badXML = preg_replace('/XXX/', $currentScript . ' : Maintenace Mode', $badXML);
 	// $badXML = preg_replace ( '/retry="true"/', 'retry="false"', $badXML );
 	echo $badXML;
-	dartLogging($currentScript, " in Maintenace Mode", $codeStr);
+	dartLoggingHour($currentScript, " in Maintenace Mode", $codeStr);
 	exit();
 }
 
 // appJSON
 if ($appJSON == FALSE || is_null($appJSON)) {
-	dartLogging($currentScript, "    jsondata is FALSE or NULL : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'], $codeStr);
+	dartLoggingHour($currentScript, "    jsondata is FALSE or NULL : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'], $codeStr);
 	$badXML = preg_replace('/XXX/', $currentScript . ' : No jsondata supplied', $badXML);
 	// $badXML = preg_replace ( '/retry="true"/', 'retry="false"', $badXML );
 	echo $badXML;
@@ -82,7 +82,7 @@ if ($appJSON == FALSE || is_null($appJSON)) {
 /*
 if (!preg_match('/,"userid":"\d+"}$/', $appJSON)) {
 	if (!(preg_match('/^{"userid":"\d+"/', $appJSON) && preg_match('/]}$/', $appJSON))) {
-		dartLogging($currentScript, "    jsondata is TRUNCATED", $codeStr);
+		dartLoggingHour($currentScript, "    jsondata is TRUNCATED", $codeStr);
 		exit();
 	}
 }
@@ -100,12 +100,12 @@ $jd = json_decode($appJSON);
 if ($jd == FALSE || is_null($jd)) {
 	// Capture bad JSON data that has been fixed already...
 	if (strpos($appJSON, '"saleid":"4095326"') !== false) {
-		dartLogging($currentScript, "    FIXED decoded jsondata is FALSE or NULL : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'], $codeStr);
+		dartLoggingHour($currentScript, "    FIXED decoded jsondata is FALSE or NULL : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'], $codeStr);
 		echo $successXML;
 		SP_ErrorLogging("Decoded JSON data is invalid for codeStr = $codeStr. FIXED", true, DART_ERROR_LOG, "DART - $currentScript - Invalid JSON data");
 		exit();
 	} else {
-		dartLogging($currentScript, "    decoded jsondata is FALSE or NULL : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'], $codeStr);
+		dartLoggingHour($currentScript, "    decoded jsondata is FALSE or NULL : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'], $codeStr);
 		$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid jsondata supplied', $badXML);
 		echo $badXML;
 		SP_ErrorLogging("Decoded JSON data is invalid for codeStr = $codeStr. Hand fix and adhoc enter data", true, DART_ERROR_LOG, "DART - $currentScript - Invalid JSON data");
@@ -136,7 +136,7 @@ if ($signerID < 0) {
 	$isDarkDrop = false;
 }
 
-// Ignore printed invoice signers
+// Ignore printed invoice signers and save the signature images
 if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 	// SIGNATURE IMAGE
 	$testImageFile = DART_SIG_DIR . 'darkstop.png';
@@ -151,7 +151,7 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 	if (!is_dir($filedir)) {
 		if (!mkdir($filedir)) {
 			$errMsg = "DART : Could not create folder for locationID = " . $jd->deliveryjson->delivery->locationid . " : $filedir";
-			dartLogging($currentScript, "    Could not create folder for locationID = " . $jd->deliveryjson->delivery->locationid, $codeStr);
+			dartLoggingHour($currentScript, "    Could not create folder for locationID = " . $jd->deliveryjson->delivery->locationid, $codeStr);
 			SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, "DART : Could not create folder : $currentScript");
 			$badXML = preg_replace('/XXX/', $currentScript . ' : Could not create folder for locationID = ' . $jd->deliveryjson->delivery->locationid, $badXML);
 			echo $badXML;
@@ -166,7 +166,7 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 		if (!$imgSrc = imagecreatefromstring(base64_decode($invoice->signatureimage))) {
 			$errMsg = "Could not create image from signatureimage data, saleID = " . $invoice->saleid . ", code = " . $codeStr . " : file = $file";
 			SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
-			dartLogging($currentScript, "    Could not create image from signatureimage data", $codeStr);
+			dartLoggingHour($currentScript, "    Could not create image from signatureimage data", $codeStr);
 			$badXML = preg_replace('/XXX/', $currentScript . ' : Could not create image from signatureimage data', $badXML);
 
 			// Capture and clear repeating call **********
@@ -174,7 +174,7 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 				$badXML = $successXML;
 				$errMsg = "Captured bad image saleID and sent success, saleID = " . $invoice->saleid . ", code = " . $codeStr;
 				SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
-				dartLogging($currentScript, "    Captured bad image saleID and sent success", $codeStr);
+				dartLoggingHour($currentScript, "    Captured bad image saleID and sent success", $codeStr);
 				continue;
 			}
 			echo $badXML;
@@ -184,21 +184,21 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 			$width = imagesx($imgSrc);
 			$height = imagesy($imgSrc);
 			if (!$imgDest = imagecreatetruecolor($width, $height)) {
-				dartLogging($currentScript, "    Could not create new true color image", $codeStr);
+				dartLoggingHour($currentScript, "    Could not create new true color image", $codeStr);
 				$badXML = preg_replace('/XXX/', $currentScript . ' : Could not create new true color image', $badXML);
 				echo $badXML;
 				exit();
 			} else {
 				// Copy sent into new
 				if (!imagecopy($imgDest, $imgSrc, 0, 0, 0, 0, $width, $height)) {
-					dartLogging($currentScript, "    Could not copy source image to new image", $codeStr);
+					dartLoggingHour($currentScript, "    Could not copy source image to new image", $codeStr);
 					$badXML = preg_replace('/XXX/', $currentScript . ' : Could not copy source image to new image', $badXML);
 					echo $badXML;
 					exit();
 				} else {
 					// Write it out
 					if (!imagepng($imgDest, $file)) {
-						dartLogging($currentScript, "    Could not save png image", $codeStr);
+						dartLoggingHour($currentScript, "    Could not save png image", $codeStr);
 						$badXML = preg_replace('/XXX/', $currentScript . ' : Could not save png image', $badXML);
 						echo $badXML;
 						exit();
@@ -229,23 +229,45 @@ while ($sqlFailed) {
 				echo "Invoice : {$invoice->saleid} : {$invoice->dsbid}";
 			}
 			// DSBID
-			if (isset($invoice->dsbid) && $invoice->dsbid > 0) {
-				$dsbData =  array(
-					'iDSBID' => intval($invoice->dsbid),
-					'iSaleID' => intval($invoice->saleid),
-					'iSaleDetailID' => 0,
-					'dtDate' => date('Y-m-d'),
-					'sNote' => $invoice->dsbNote,
-					'fQty' => 0.0
-				);
-				error_log("$currentScript : $codeStr : INVOICE DSBID > 0 : dsbData JSON String =" . json_encode($dsbData));
-				$invoice->signatureimage = 'xxx';
-				error_log("$currentScript : $codeStr : INVOICE JSON = " . json_encode($invoice));
-				$sql = "uspDartMenuProcess ?";
-				$stmt = $dbh->prepare($sql);
-				$stmt->execute(array(json_encode($dsbData)));
+			if (intval($invoice->dsbid) > 0) {
+				if (isset($invoice->invoice_item_list[0]->dsbReplaceQtyToday)) {
+					// "NEW" DSBID
+					$dsbEntry = new stdClass();
+					$dsbEntry->iSaleID = intval($invoice->saleid);
+					$dsbEntry->dtDate = date('Y-m-d');
+					$dsbEntry->details = array();
+					$dsbDetail = new stdClass();
+					$dsbDetail->iDSBID = intval($invoice->dsbid);
+					$dsbDetail->iSaleDetailID = 0;
+					$dsbDetail->sNote = $invoice->dsbNote;
+					$dsbDetail->fQty = 0;
+					$dsbDetail->iUnitID = 0;
+					$dsbDetail->mUnitPrice = 0.00;
+					$dsbDetail->fQtyN = 0;
+					$dsbDetail->iUnitN = 0;
+					$dsbDetail->mPriceN = 0.00;
+					$dsbDetail->dtDateDetail = date('Y-m-d');
+					$dsbEntry->details[] = $dsbDetail;
+					error_log("$currentScript : $codeStr : NEW INVOICE DSBID > 0 : dsbEntry JSON String =" . json_encode($dsbEntry));
+					$sql = "uspDARTMenuProcessJSON ?";
+					$stmt = $dbh->prepare($sql);
+					$stmt->execute(array(json_encode($dsbEntry)));
+				} else {
+					// "OLD" DSBID
+					$dsbData =  array(
+						'iDSBID' => intval($invoice->dsbid),
+						'iSaleID' => intval($invoice->saleid),
+						'iSaleDetailID' => 0,
+						'dtDate' => date('Y-m-d'),
+						'sNote' => $invoice->dsbNote,
+						'fQty' => 0.0
+					);
+					error_log("$currentScript : $codeStr : OLD INVOICE DSBID > 0 : dsbData JSON String =" . json_encode($dsbData));
+					$sql = "uspDartMenuProcess ?";
+					$stmt = $dbh->prepare($sql);
+					$stmt->execute(array(json_encode($dsbData)));
+				}
 			}
-
 			$invXML .= '<Rec rID="' . $invoice->saleid . '" dtDelTime="' . $invoice->signtimestamp . '"/>' . "\n";
 		}
 		$invXML .= "</ROOT>";
@@ -265,7 +287,7 @@ while ($sqlFailed) {
 		}
 		$stmt->closeCursor();
 		if ($repeatCall) {
-			dartLogging($currentScript, "  Repeat Call : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'], $codeStr);
+			dartLoggingHour($currentScript, "  Repeat Call : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'], $codeStr);
 			$dbh = null;
 			echo $successXML;
 			exit();
@@ -277,7 +299,7 @@ while ($sqlFailed) {
 			$stmt = $dbh->query($sql);
 			$result = $stmt->fetch(PDO::FETCH_ASSOC);
 			$deletedID = $result['iUserID'];
-			dartLogging($currentScript, "    uspDARTAddSigner iUserID=" . $deletedID . " DELETED", $codeStr);
+			dartLoggingHour($currentScript, "    uspDARTAddSigner iUserID=" . $deletedID . " DELETED", $codeStr);
 			$stmt->closeCursor();
 		}
 
@@ -291,11 +313,11 @@ while ($sqlFailed) {
 			$sql .= ", 1, ";
 			$sigPhone = formatPhone(trim($jd->deliveryjson->delivery->signerinfo->phone));
 			$sql .= ($sigPhone == '') ? "''" : "'" . $sigPhone . "'";
-			dartLogging($currentScript, "    uspDARTAddSigner sql=" . $sql, $codeStr);
+			dartLoggingHour($currentScript, "    uspDARTAddSigner sql=" . $sql, $codeStr);
 			$stmt = $dbh->query($sql);
 			$result = $stmt->fetch(PDO::FETCH_ASSOC);
 			$signerID = $result['iUserID'];
-			dartLogging($currentScript, "    uspDARTAddSigner iUserID=" . $signerID, $codeStr);
+			dartLoggingHour($currentScript, "    uspDARTAddSigner iUserID=" . $signerID, $codeStr);
 			$stmt->closeCursor();
 		} elseif ($signerID > 0 && strlen(trim($jd->deliveryjson->delivery->signerinfo->fname)) > 1) {
 			// Update the signer
@@ -306,7 +328,7 @@ while ($sqlFailed) {
 			$sql .= ", 3, ";
 			$sigPhone = formatPhone(trim($jd->deliveryjson->delivery->signerinfo->phone));
 			$sql .= ($sigPhone == '') ? "''" : "'" . $sigPhone . "'";
-			dartLogging($currentScript, "    uspDARTAddSigner sql=" . $sql, $codeStr);
+			dartLoggingHour($currentScript, "    uspDARTAddSigner sql=" . $sql, $codeStr);
 			$stmt = $dbh->query($sql);
 			$result = $stmt->fetch(PDO::FETCH_ASSOC);
 			$signerID = $result['iUserID'];
@@ -335,8 +357,8 @@ while ($sqlFailed) {
 		$userID = $jd->userid;
 		$dsbData = array();
 		foreach ($jd->deliveryjson->invoice_list as $invoice) {
-			// DBSID for invoice > 0 means line items already dealt with...
-			if (isset($invoice->dsbid) && intval($invoice->dsbid) > 0) {
+			// DBSID for invoice > 0 means line items already dealt with as part of invoice-wide DSBID...
+			if (intval($invoice->dsbid) > 0) {
 				continue;
 			}
 			$getAllLines = false;
@@ -344,27 +366,91 @@ while ($sqlFailed) {
 				$getAllLines = true;
 				$updateAtDeliveryFailXML .= '<Rec rID="' . $invoice->saleid . '"/>' . "\n";
 			}
+			/* NEW DART MENU PROCESS */
+			$dsbEntry = new stdClass();
+			$dsbEntry->iSaleID = intval($invoice->saleid);
+			$dsbEntry->dtDate = date('Y-m-d');
+			$dsbEntry->details = array();
 			foreach ($invoice->invoice_item_list as $line) {
-				if ($line->edited == "true" || $getAllLines == true) {
+				// DSBID
+				if (intval($line->dsbid) > 0) {
+					if (isset($line->dsbReplaceQtyToday)) {
+						/* NEW DART MENU PROCESS */
+						$qtyToday = $line->dsbReplaceQtyToday;
+						$qtyTomorrow = $line->dsbReplaceQtyTomorrow;
+						if ($qtyToday == 0 && $qtyTomorrow == 0) {
+							// Delivered quantity changed, but no replacement requested
+							$dsbDetail = new stdClass();
+							$dsbDetail->iDSBID = intval($line->dsbid);
+							$dsbDetail->iSaleDetailID = intval($line->lineid);
+							$dsbDetail->sNote = $line->dsbNote;
+							$dsbDetail->fQty = $line->finalqship;
+							$dsbDetail->iUnitID = $line->finalunitid;
+							$dsbDetail->mUnitPrice = $line->finalunitprice;
+							$dsbDetail->fQtyN = 0;
+							$dsbDetail->iUnitN = 0;
+							$dsbDetail->mPriceN = 0.00;
+							$dsbDetail->dtDateDetail = date('Y-m-d');
+							$dsbEntry->details[] = $dsbDetail;
+						} else {
+							// We'll have either a today, tomorrow or both replacements
+							if ($line->dsbReplaceQtyToday > 0) {
+								$dsbDetail = new stdClass();
+								$dsbDetail->iDSBID = intval($line->dsbid);
+								$dsbDetail->iSaleDetailID = intval($line->lineid);
+								$dsbDetail->sNote = $line->dsbNote;
+								$dsbDetail->fQty = $line->finalqship;
+								$dsbDetail->iUnitID = $line->finalunitid;
+								$dsbDetail->mUnitPrice = $line->finalunitprice;
+								$dsbDetail->fQtyN = $line->dsbReplaceQtyToday;
+								$dsbDetail->iUnitN = intval($line->dsbReplaceUnitToday);
+								$dsbDetail->mPriceN = $line->dsbReplacePriceToday;
+								$dsbDetail->dtDateDetail = $line->dsbReplaceShipDateToday;
+								$dsbEntry->details[] = $dsbDetail;
+							}
+							if ($line->dsbReplaceQtyTomorrow > 0) {
+								$dsbDetail = new stdClass();
+								$dsbDetail->iDSBID = intval($line->dsbid);
+								$dsbDetail->iSaleDetailID = intval($line->lineid);
+								$dsbDetail->sNote = $line->dsbNote;
+								$dsbDetail->fQty = $line->finalqship;
+								$dsbDetail->iUnitID = $line->finalunitid;
+								$dsbDetail->mUnitPrice = $line->finalunitprice;
+								$dsbDetail->fQtyN = $line->dsbReplaceQtyTomorrow;
+								$dsbDetail->iUnitN = intval($line->dsbReplaceUnitTomorrow);
+								$dsbDetail->mPriceN = $line->dsbReplacePriceTomorrow;
+								$dsbDetail->dtDateDetail = $line->dsbReplaceShipDateTomorrow;
+								$dsbEntry->details[] = $dsbDetail;
+							}
+						}
+					} else {
+						$dsbData =  array(
+							'iDSBID' => intval($line->dsbid),
+							'iSaleID' => intval($invoice->saleid),
+							'iSaleDetailID' => intval($line->lineid),
+							'dtDate' => date('Y-m-d'),
+							'sNote' => $line->dsbNote,
+							'fQty' => floatval($line->finalqship)
+						);
+						error_log("$currentScript : $codeStr : OLD LINE ITEM DSBID > 0 : dsbData JSON String =" . json_encode($dsbData));
+						dartLoggingHour($currentScript, "    OLD LINE ITEM DSBID > 0 : dsbData JSON String =" . json_encode($dsbData), $codeStr);
+						error_log("$currentScript : $codeStr : OLD LINE ITEM JSON = " . json_encode($line));
+						$sql = "uspDartMenuProcess ?";
+						$stmt = $dbh->prepare($sql);
+						$stmt->execute(array(json_encode($dsbData)));
+					}
+				} elseif ($line->edited == "true" || $getAllLines == true) {
+					// Catch instances where just the UNIT was changed - this does not currently trigger a DSBID > 0
 					$saleDetailXML .= '<Rec rID="' . $line->lineid . '" iUnitID="' . $line->finalunitid . '" fQty="' . $line->finalqship . '" mUnitPrice="' . $line->finalunitprice . '" iStatus= "' . $line->editreason . '"/>' . "\n";
 				}
-				// DSBID
-				if (isset($line->dsbid) && $line->dsbid > 0) {
-					$dsbData =  array(
-						'iDSBID' => intval($line->dsbid),
-						'iSaleID' => intval($invoice->saleid),
-						'iSaleDetailID' => intval($line->lineid),
-						'dtDate' => date('Y-m-d'),
-						'sNote' => $line->dsbNote,
-						'fQty' => floatval($line->finalqship)
-					);
-					error_log("$currentScript : $codeStr : LINE ITEM DSBID > 0 : dsbData JSON String =" . json_encode($dsbData));
-					dartLogging($currentScript, "    LINE ITEM DSBID > 0 : dsbData JSON String =" . json_encode($dsbData), $codeStr);
-					error_log("$currentScript : $codeStr : LINE ITEM JSON = " . json_encode($line));
-					$sql = "uspDartMenuProcess ?";
-					$stmt = $dbh->prepare($sql);
-					$stmt->execute(array(json_encode($dsbData)));
-				}
+			}
+			/* NEW DART MENU PROCESS */
+			if (count($dsbEntry->details) > 0) {
+				error_log("$currentScript : $codeStr : NEW INVOICE LINE ITEM(s) DSBID > 0 : dsbEntry JSON String =" . json_encode($dsbEntry));
+				dartLoggingHour($currentScript, "    NEW INVOICE LINE ITEM(s) DSBID > 0 : dsbEntry JSON String =" . json_encode($dsbEntry), $codeStr);
+				$sql = "uspDartMenuProcessJSON ?";
+				$stmt = $dbh->prepare($sql);
+				$stmt->execute(array(json_encode($dsbEntry)));
 			}
 			// Green Discount Updates
 			if ($invoice->greendiscountchanged == "true" || $getAllLines) {
@@ -389,27 +475,27 @@ while ($sqlFailed) {
 		$resultUpdateChanges = true;
 		if ($saleDetailXML != '') {
 			$saleDetailXML = "<ROOT>\n" . $saleDetailXML . "</ROOT>";
-			dartLogging($currentScript, "    saleDetailXML=" . $saleDetailXML, $codeStr);
+			dartLoggingHour($currentScript, "    saleDetailXML=" . $saleDetailXML, $codeStr);
 			$sql = "uspDARTDeliveryCompleteUpdates '" . $saleDetailXML . "'";
 			$resultUpdateChanges = $dbh->exec($sql);
 		}
 		$resultDeliveryFail = true;
 		if ($updateAtDeliveryFailXML != '') {
 			$updateAtDeliveryFailXML = "<ROOT>\n" . $updateAtDeliveryFailXML . "</ROOT>";
-			dartLogging($currentScript, "    updateAtDeliveryFailXML=" . $updateAtDeliveryFailXML, $codeStr);
+			dartLoggingHour($currentScript, "    updateAtDeliveryFailXML=" . $updateAtDeliveryFailXML, $codeStr);
 			$sql = "uspDARTUpdateAtDeliveryFail '" . $updateAtDeliveryFailXML . "'";
 			$resultDeliveryFail = $dbh->exec($sql);
 		}
 		$resultUpdateGreenDiscount = true;
 
 		if (count($saleGD_JSON) > 0) {
-			dartLogging($currentScript, "    saleJSON=" . json_encode($saleGD_JSON), $codeStr);
+			dartLoggingHour($currentScript, "    Green Discount saleJSON=" . json_encode($saleGD_JSON), $codeStr);
 			$sql = "uspDARTDeliveryCompleteUpdatesGreenDiscount '" . json_encode($saleGD_JSON) . "'";
 			$resultUpdateGreenDiscount = $dbh->exec($sql);
 		}
 
 		if (count($saleST_JSON) > 0) {
-			dartLogging($currentScript, "    saleJSON=" . json_encode($saleST_JSON), $codeStr);
+			dartLoggingHour($currentScript, "    Sales Tax saleJSON=" . json_encode($saleST_JSON), $codeStr);
 			$sql = "uspDARTDeliveryCompleteUpdatesSalesTax '" . json_encode($saleST_JSON) . "'";
 			$resultUpdateGreenDiscount = $dbh->exec($sql);
 		}
@@ -438,7 +524,7 @@ while ($sqlFailed) {
 			}
 		} else {
 			SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, 'DART : DeliveryComplete Serious');
-			dartLogging($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
+			dartLoggingHour($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
 			$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
 			echo $badXML;
 			exit();
@@ -449,7 +535,7 @@ while ($sqlFailed) {
 if ($resultDelivered === false) {
 	$errMsg = "$currentScript : uspDARTDelivered $updateCode, $signerID, $invXML returned FALSE : $codeStr";
 	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
-	dartLogging($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
+	dartLoggingHour($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
 	$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
 	echo $badXML;
 	exit();
@@ -458,7 +544,7 @@ if ($resultDelivered === false) {
 if ($resultUpdateChanges === false) {
 	$errMsg = "uspDARTDeliveryCompleteUpdates $saleDetailXML returned FALSE : $codeStr";
 	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
-	dartLogging($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
+	dartLoggingHour($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
 	$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
 	echo $badXML;
 	exit();
@@ -467,7 +553,7 @@ if ($resultUpdateChanges === false) {
 if ($resultDeliveryFail === false) {
 	$errMsg = "uspDARTUpdateAtDeliveryFail $updateAtDeliveryFailXML returned FALSE : $codeStr";
 	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
-	dartLogging($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
+	dartLoggingHour($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
 	$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
 	echo $badXML;
 	exit();
@@ -476,7 +562,7 @@ if ($resultDeliveryFail === false) {
 if ($resultUpdateGreenDiscount === false) {
 	$errMsg = "uspDARTDeliveryCompleteUpdatesGreenDiscount " . json_encode($saleGD_JSON) . " returned FALSE : $codeStr";
 	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
-	dartLogging($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
+	dartLoggingHour($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
 	$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
 	echo $badXML;
 	exit();
@@ -591,7 +677,7 @@ if (count($jd->new_invoice_ship_today_list) > 0) {
 				}
 			} else {
 				SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, 'DART : DeliveryComplete : New Invoice Serious');
-				dartLogging($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
+				dartLoggingHour($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
 				$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
 				echo $badXML;
 				exit();
@@ -708,7 +794,7 @@ if (count($jd->new_invoice_ship_tomorrow_list) > 0) {
 				}
 			} else {
 				SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, 'DART : DeliveryComplete : New Invoice Serious');
-				dartLogging($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
+				dartLoggingHour($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
 				$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
 				echo $badXML;
 				exit();
@@ -730,7 +816,7 @@ if ($signerID != PRINTED_INVOICE_ID) {
 }
 
 echo $successXML;
-dartLogging($currentScript, "  Success : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'], $codeStr);
+dartLoggingHour($currentScript, "  Success : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'], $codeStr);
 
-error_log("$currentScript : $codeStr : END");
+// error_log("$currentScript : $codeStr : END");
 exit();

@@ -51,6 +51,13 @@ function dartLogging($webservice, $data, $code = '') {
 	fwrite($confirmFile, $timeStamp . " : " . $code . " : " . $data . "\n");
 	fclose($confirmFile);
 }
+function dartLoggingHour($webservice, $data, $code = '') {
+	$filename = DART_LOG_DIR . $webservice . "_" . date('H')  . ".log";
+	$confirmFile = fopen($filename, "a+");
+	$timeStamp = date('[d-M-Y H:i:s]');
+	fwrite($confirmFile, $timeStamp . " : " . $code . " : " . $data . "\n");
+	fclose($confirmFile);
+}
 function DART_escapeXmlString($str) {
 	// must do ampersand first
 	$search = array(

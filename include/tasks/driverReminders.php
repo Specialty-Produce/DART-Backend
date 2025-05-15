@@ -1,7 +1,7 @@
 <?php
 include_once 'global_CDC.php';
 include_once 'classes_SP/class_DART.php';
-include_once 'classes_SP/class_ADP_SP.php';
+include_once 'classes_SP/class_ADPWFN_SP.php';
 require_once 'classes_SP/class_Voxox_SP.php';
 include '../../dart_init.php';
 
@@ -15,7 +15,7 @@ echo "<pre>" . print_r($driverList, true) . "</pre>";
 $userIDs = array_column($driverList, 'uid');
 echo "<pre>" . print_r($userIDs, true) . "</pre>";
 
-$punches = ADP_SP::getPunchesByUserIDs($userIDs, $today);
+$punches = ADPWFN_SP::getPunchesByUserIDs($userIDs, $today);
 
 echo "<hr/>Punches:\n<pre>" . print_r($punches, true) . "</pre>";
 

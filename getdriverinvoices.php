@@ -16,9 +16,13 @@ $codeStr = generateRandomCode(6);
 // User ID
 $userid = filter_input(INPUT_POST, 'userid', FILTER_SANITIZE_NUMBER_INT);
 if ($userid == FALSE || is_null($userid)) {
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid User ID', $badXML);
-	echo $badXML;
-	exit();
+	if (isset($_GET['uid'])) {
+		$userid = trim(filter_input(INPUT_GET, 'uid', FILTER_VALIDATE_INT));
+	} else {
+		$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid User ID', $badXML);
+		echo $badXML;
+		exit();
+	}
 }
 
 dartLogging($currentScript, "userid=" . $userid, $codeStr);
@@ -48,7 +52,7 @@ try {
 		$routeInfo = $stmt->fetchAll(PDO::FETCH_BOTH);
 		$stmt->closeCursor();
 		// Get the invoice data
-		$stmt = $dbh->query("uspDARTGetDriverInvoices $userid");
+		$stmt = $dbh->query("uspDARTGetDriverInvoicesDev2 $userid");
 		$invInfo = $stmt->fetchAll(PDO::FETCH_BOTH);
 		$stmt->closeCursor();
 	}
@@ -72,7 +76,7 @@ foreach ($routeInfo as $entry) {
 		'date' => strftime("%m/%d/%Y"),
 		'lastupdate' => $lastUpdate,
 		'notes' => DART_escapeXmlString(mb_convert_encoding($entry['txtInvoiceNotes'], "UTF-8", "Windows-1252")),
-		'po' => mb_convert_encoding($entry['sPO'], "UTF-8", "Windows-1252"),
+		'po' => mb_convert_encoding($entry['sPo'], "UTF-8", "Windows-1252"),
 		'terms' => mb_convert_encoding($entry['sTerms'], "UTF-8", "Windows-1252"),
 		'packerlocation' => $packerLocation
 	);
@@ -91,6 +95,8 @@ foreach ($invInfo as $item) {
 		'crvID' => $item['iCRVProductID'],
 		'crvPrice' => $item['mCRVPrice']
 	);
+	$salesTaxRate = sprintf("%0.4f", 100 * $item['fTaxRate']);
+	$salestaxAmount = sprintf("%0.2f", $item['mTax']);
 	// Only add to the invoice the actual unitID set items
 	if ($item['iInvoiceDefault'] == 1)
 		$invoiceList[$item['iSaleID']]['items'][] = array(
@@ -102,10 +108,8 @@ foreach ($invInfo as $item) {
 			'qship' => $item['fShipQuantity'],
 			'status' => $item['iShort'],
 			'itemspec' => DART_escapeXmlString(mb_convert_encoding($item['sItemNotes'], "UTF-8", "Windows-1252")),
-			// 'salestaxrate' => sprintf("%0.4f", 100 * $item['fTaxRate']),
-			// 'salestaxamount' => sprintf("%0.2f", $item['mTax']),
-			'salestaxrate' => 0.000,
-			'salestaxamount' => 0.00,
+			'salestaxrate' => $salesTaxRate,
+			'salestaxamount' => $salestaxAmount,
 			'greendiscount' => sprintf("%0.2f", 100.0 * ($item['fDiscountOnline'] + $item['fDiscountOnTime']))
 		);
 }

@@ -1,5 +1,6 @@
 <?php
 include_once 'global_CDC.php';
+include_once 'classes_SP/class_DART.php';
 include_once 'classes_SP/class_AzureBlobSP.php';
 include 'dart_init.php';
 $currentScript = basename($_SERVER["SCRIPT_NAME"]);
@@ -29,7 +30,7 @@ if (isset($_POST['jsondata'])) {
 	// dartLogging ( $currentScript, "jsondata=" . (preg_replace ( '/(,"signatureimage":")[^"]+(","status")/', '$1 --- $2', $appJSON )), $codeStr );
 	// dartLogging ( $currentScript, "jsondata=" . $appJSON, $codeStr );
 	// dartLogging ( $currentScript, "POST=" . print_r($_POST, true), $codeStr );
-	dartLogging($currentScript, "Starting...", $codeStr);
+	dartLogging($currentScript, "Starting...\n" . $_POST['jsondata'], $codeStr);
 } else {
 	$appJSON = false;
 }
@@ -96,9 +97,10 @@ if (!imagecopy($imgDest, $imgSrc, 0, 0, 0, 0, $width, $height)) {
 try {
 	$azb = new AzureBlobSP('specprodstorage');
 	imagepng($imgDest, $filePath);
-	if ($jd->pictype == 'poorquality')
+	if ($jd->pictype == 'poorquality') {
 		$azb->putBlockBlobFile(AzureBlobSP::AZURE_STORAGE_POOR_QUALITY_PICS_DIR, '', $fileName, $filePath, 'image/png');
-	else {
+		DART::alertPoorQuality($jd->lineitemid);
+	} else {
 		$errMsg = "Invalid pictype : " . $jd->pictype . ", code = " . $codeStr;
 		SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
 		dartLogging($currentScript, "    Invalid pic type", $codeStr);
