@@ -20,6 +20,7 @@ require_once 'classes_SP/class_invoicePDF.php';
 require_once 'classes_SP/class_InvoiceR365.php';
 require_once 'classes_SP/class_InvoicePlateIQ.php';
 require_once 'classes_SP/class_InvoiceSP_QSROnline.php';
+require_once 'classes_SP/class_InvoiceSP_XtraChef.php';
 require_once 'EDI_SP.php';
 require_once 'classes_SP/class_SP_FTP.php';
 include_once 'classes_SP/class_SP_SFTP.php';
@@ -79,6 +80,7 @@ $simple123CSV = false; // No locations in tblDARTInvoiceSendSimple123
 $r365FTP = true;
 $plateIQMail = true;
 $qsronlineCSV = true;
+$xtrachefFTP = true;
 
 // $resendArray = array (3123888,3123662,3123908,3123956,3123321);
 
@@ -107,6 +109,7 @@ if ($adhoc) {
 	$r365FTP = false;
 	$plateIQMail = false;
 	$qsronlineCSV = false;
+	$xtrachefFTP = false;
 }
 
 if (count($argv) == 1) {
@@ -132,6 +135,7 @@ $plateIQEmailAddress = '';
 $plateIQPODefault = '';
 $simple123IDs = array();
 $qsronlineIDs = array();
+$xtrachefData = array();
 $pppEmails = array();
 $sqlFailed = true;
 $sqlAttemptCount = 1;
@@ -370,6 +374,16 @@ while ($sqlFailed) {
 		if ($adhoc) {
 			if ($debug) {
 				$qsronlineIDs = array();
+			}
+		}
+
+		// XtraChef / Toast
+		$stmt = $dbh->query("SELECT iLocationID, sFTPFolder FROM tblDARTInvoiceSendXtraChef WHERE iLocationID=" . $locInfo[$validSaleIDs[0]]['id']);
+		$xtrachefData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+		$stmt->closeCursor();
+		if ($adhoc) {
+			if ($debug) {
+				$xtrachefData = array();
 			}
 		}
 
@@ -1379,6 +1393,38 @@ if ($qsronlineCSV) {
 } else {
 	if ($adhoc)
 		echo "NOT sending via FTP to QSROnline...\n";
+}
+
+// Process XtraChef Invoices
+if ($xtrachefFTP) {
+	if ($adhoc)
+		echo "Sending via FTP to XtraChef...\n";
+	if (count($xtrachefData) > 0) {
+		$xtrachefInvoiceList = array();
+		$invXtraChef = new InvoiceSP_XtraChef();
+		$csv = $invXtraChef->getCSVHeader() . "\n";
+		foreach ($locInfo as $loc) {
+			$invXtraChef->retrieveInvoice($loc['saleID']);
+			$xtrachefInvoiceList[] = $loc['saleID'];
+			$csv .= $invXtraChef->generateInvoiceCSV();
+		}
+		$fileNameInv = 'SpecialtyProduce_' . $invXtraChef->getLocationID() . '_' . date('ymdHi') . '.csv';
+		$fileInv = SPConsts::TempDir . $fileNameInv;
+		file_put_contents($fileInv, $csv);
+		try {
+			$ftp = new SP_FTP(XtraChefConstants::FTP_SERVER, XtraChefConstants::FTP_USER, XtraChefConstants::FTP_PW, XtraChefConstants::FTP_PASV);
+			$ftp->sendFile(SPConsts::TempDir, $fileNameInv, $xtrachefData[0]['sFTPFolder']);
+			unlink($fileInv);
+		} catch (SP_Exception $spe) {
+			$errMsg = "XtraChef : FTP error : " . $spe->getMessage();
+			SP_errorLogging($errMsg, true, '', $currentScript . " - XtraChef error");
+			dartLogging($currentScript, "    XtraChef FTP Failed : " . implode(',', $xtrachefInvoiceList));
+		}
+		dartLogging($currentScript, "    XtraChef FTP Sent : " . implode(',', $xtrachefInvoiceList));
+	}
+} else {
+	if ($adhoc)
+		echo "NOT sending via FTP to XtraChef...\n";
 }
 
 // Remove the PDFs
