@@ -1,0 +1,119 @@
+5/27/25
+OOO getdriverinvoices.php
+OOO getdriverroute.php
+X getstartchecklist.php
+X getendchecklist.php
+OOO getinvoices.php
+OOO getpullreport.php
+OOO getstaticinfo.php
+OOO login.php
+
+5/28/25
+OOO startroute.php
+OOO validateinvoices.php
+OOO updateatdelivery.php
+OOO unupdateatdelivery.php
+
+5/29/25
+OOO breakstart.php
+OOO breakend.php
+OOO deliverycomplete.php
+OOO putgpsdata.php
+OOO putstartchecklist.php
+X putendchecklist.php
+OOO redx.php
+X deliverednosignature.php
+OOO putpicturedelivery.php
+OOO updatelocationgps.php
+X printdriverpaperwork.php
+OOO transferdriver.php
+
+5/30/25
+OOO errorreport.php
+OOO getdartversions.php
+OOO logreport.php
+OOO optimizeroute.php
+OOO putpicture.php
+OOO updatedeliverysort.php
+X apnconfirm.php
+X cancelledbysp.php
+X crashreporter.php
+X getaccidentreport.php
+X putaccidentreport.php
+X putpunchin.php
+X endroute.php
+
+Still in use???
+loginIpads.php
+lunchbreakend.php
+lunchbreakstart.php
+putnewsigner.php
+removefromdart.php
+sigresend.php
+startchecklist.php
+statusupdate.php
+
+Used for Debug and/or Info
+checkdriver.php
+currentUsers.php
+debugsyncstate.php
+setdriverstate.php
+setstate.php
+
+
+
+
+apnconfirm.php
+breakend.php
+breakstart.php
+cancelledbysp.php
+crashreporter.php
+deliverednosignature.php
+deliverycomplete.php
+endroute.php
+errorreport.php
+getaccidentreport.php
+getdartversions.php
+getdriverinvoices.php
+getdriverroute.php
+getendchecklist.php
+getinvoices.php
+getpullreport.php
+getstartchecklist.php
+getstaticinfo.php
+login.php
+logreport.php
+optimizeroute.php
+printdriverpaperwork.php
+putaccidentreport.php
+putendchecklist.php
+putgpsdata.php
+putpicture.php
+putpicturedelivery.php
+putpunchin.php
+putstartchecklist.php
+redx.php
+startroute.php
+transferdriver.php
+unupdateatdelivery.php
+updateatdelivery.php
+updatedeliverysort.php
+updatelocationgps.php
+validateinvoices.php
+ 
+Still in use??? I have not worked these up, in part, because I don't think they are in PROD DART anymore.
+loginIpads.php
+lunchbreakend.php
+lunchbreakstart.php
+putnewsigner.php
+removefromdart.php
+sigresend.php
+startchecklist.php
+statusupdate.php
+ 
+Used for Debug and/or Info  These are browser calls that can change the DEBUG USER state or provide some info.
+checkdriver.php
+currentUsers.php
+debugsyncstate.php
+setdriverstate.php
+setstate.php

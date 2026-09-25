@@ -2,13 +2,7 @@
 include_once 'global_CDC.php';
 include 'dart_init.php';
 $currentScript = basename($_SERVER["SCRIPT_NAME"]);
-
-// On various errors and failures, we'll use the status BAD update XML
-$badXML = <<< EOT
-<?xml version="1.0"?>
-<staticinfo status="failed" code="0" retry="true" errmsg="XXX">
-</staticinfo>
-EOT;
+$sendObj->webservice = $currentScript;
 
 // Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
 $codeStr = generateRandomCode(6);
@@ -24,8 +18,8 @@ if (isset($_GET['ah'])) {
 	$adhoc = true;
 }
 if ($userid == FALSE || is_null($userid)) {
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid User ID', $badXML);
-	echo $badXML;
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No userid supplied', 'No userid supplied in POST request');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
 	exit();
 }
 
@@ -68,82 +62,89 @@ try {
 	$dbh = null;
 } catch (PDOException $e) {
 	$errMsg = $e->getFile() . ' (' . $e->getLine() . ')' . $e->getMessage();
-	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
-	echo $badXML;
+	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, "DART : $currentScript Serious");
+	sendError(500, ERROR_CODES::ERROR_DATABASE, 'Database is down', 'Database error, see ' . DART_ERROR_LOG . ' log', false);
+	dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
 	exit();
 }
 
-// Generate the XML
-$resultStr = '<?xml version="1.0"?>' . "\n";
-$resultStr .= '<staticinfo status="success">' . "\n";
+// Constants
+$sendObj->data->webservicefilesavedays = 5; // Number of days to save web service files
+
 // Product Status
-$resultStr .= '<productstatus_entry_list infoname="productstatus">' . "\n";
+$sendObj->data->productstatus = array();
 foreach ($productStatus as $entry) {
-	$resultStr .= '	<entry id="' . $entry['iShortID'] . '">' . mb_convert_encoding($entry['sDescription'], "UTF-8", "Windows-1252") . "</entry>\n";
+	$sendObj->data->productstatus[] = array(
+		'id' => intval($entry['iShortID']),
+		'description' => mb_convert_encoding($entry['sDescription'], "UTF-8", "Windows-1252")
+	);
 }
-$resultStr .= "</productstatus_entry_list>\n";
 // Sent Backs
-$resultStr .= '<sentbackstatus_entry_list infoname="sentbackstatus">' . "\n";
+$sendObj->data->sentbackstatus = array();
 foreach ($sentBacks as $entry) {
-	$resultStr .= '	<entry dsbid="' . $entry['iDSBID'] . '" typeid="' . $entry['iTypeID'] . '" category="' . $entry['sCategory'] . '">' . mb_convert_encoding($entry['sDescription'], "UTF-8", "Windows-1252") . "</entry>\n";
+	$sendObj->data->sentbackstatus[] = array(
+		'dsbid' => intval($entry['iDSBID']),
+		'typeid' => intval($entry['iTypeID']),
+		'category' => $entry['sCategory'],
+		'description' => mb_convert_encoding($entry['sDescription'], "UTF-8", "Windows-1252")
+	);
 }
-$resultStr .= "</sentbackstatus_entry_list>\n";
 // Order Status
-$resultStr .= '<orderstatus_entry_list infoname="orderstatus">' . "\n";
+$sendObj->data->orderstatus = array();
 foreach ($orderStatus as $entry) {
-	$resultStr .= '	<entry id="' . $entry['iAutoID'] . '">' . mb_convert_encoding($entry['sDescription'], "UTF-8", "Windows-1252") . "</entry>\n";
+	$sendObj->data->orderstatus[] = array(
+		'id' => intval($entry['iAutoID']),
+		'description' => mb_convert_encoding($entry['sDescription'], "UTF-8", "Windows-1252")
+	);
 }
-$resultStr .= "</orderstatus_entry_list>\n";
-$resultStr .= '<messageaddresses_entry_list infoname="addresses">' . "\n";
-$resultStr .= <<< EOT
-<entry id="9215">Christopher Cilley</entry>
-<entry id="2835">Erick Chavez</entry>
-<entry id="2">Management</entry>
-<entry id="635">Roger Harrington</entry>
-
-EOT;
-$resultStr .= "</messageaddresses_entry_list>\n";
-$resultStr .= '<driver_entry_list infoname="drivers">' . "\n";
+// Message Addresses
+$sendObj->data->messageaddresses = array(
+	array('id' => 9215, 'name' => 'Christopher Cilley'),
+	array('id' => 2835, 'name' => 'Erick Chavez'),
+	array('id' => 2, 'name' => 'Management'),
+	array('id' => 635, 'name' => 'Roger Harrington')
+);
+// Drivers
+$sendObj->data->drivers = array();
 foreach ($driverList as $entry) {
-	$resultStr .= '	<entry id="' . $entry['iUserID'] . '">' . mb_convert_encoding($entry['txtFirstName'], "UTF-8", "Windows-1252") . " " . mb_convert_encoding($entry['txtLastName'], "UTF-8", "Windows-1252") . "</entry>\n";
+	$sendObj->data->drivers[] = array(
+		'id' => intval($entry['iUserID']),
+		'name' => mb_convert_encoding($entry['txtFirstName'], "UTF-8", "Windows-1252") . " " . mb_convert_encoding($entry['txtLastName'], "UTF-8", "Windows-1252")
+	);
 }
-$resultStr .= "</driver_entry_list>\n";
-$resultStr .= "<webservicefilesavedays>5</webservicefilesavedays>\n";
-
-$resultStr .= '<vehicle_entry_list infoname="vehicles">' . "\n";
+// Vehicles
+$sendObj->data->vehicles = array();
 foreach ($vehicleList as $vehicle) {
-	$resultStr .= '		<entry id="' . $vehicle['iTruckID'] . '">' . $vehicle['iRefrigerated'] . ':' . $vehicle['iOdometer'] . '">' . $vehicle['sDescription'] . "</option>\n";
+	$sendObj->data->vehicles[] = array(
+		'id' => intval($vehicle['iTruckID']),
+		'description' => $vehicle['sDescription'],
+		'refrigerated' => ($vehicle['iRefrigerated'] == 0) ? false : true,
+		'odometer' => intval($vehicle['iOdometer']),
+		'samsaraid' => $vehicle['iSamsaraID']
+	);
 }
-$resultStr .= "</driver_entry_list>\n";
-
-$resultStr .= "<crv_entry_list>\n";
+// CRV
+$sendObj->data->crv = array();
 foreach ($crvList as $entry) {
-	$resultStr .= '		<entry id="' . $entry['iProductID'] . '">' . sprintf("%0.2f", $entry['mUnitPrice']) . "</entry>\n";
+	$sendObj->data->crv[] = array(
+		'id' => intval($entry['iProductID']),
+		'unitprice' => floatval(sprintf("%0.2f", $entry['mUnitPrice']))
+	);
 }
-$resultStr .= "</crv_entry_list>\n";
-
-$resultStr .= "<menu_red_x_list>\n";
+// Menu Red X
+$sendObj->data->menu_red_x = array();
 foreach ($menuList as $entry) {
 	if ($entry['iTypeID'] != 1) {
 		continue;
 	}
 	$jsActions = json_decode($entry['sAction'], true);
-	$resultStr .= '		<entry dsbid="' . $entry['iDSBID'] . '" actions="' . implode(',', $jsActions) . '" notes="' . $entry['sNotes'] . '" notesspanish="' . $entry['sNoteSpanish'] . '">' . $entry['sDescription'] . "</entry>\n";
+	$sendObj->data->menu_red_x[] = array(
+		'dsbid' => intval($entry['iDSBID']),
+		'actions' => implode(',', $jsActions),
+		'notes' => $entry['sNotes'],
+		'notesspanish' => $entry['sNoteSpanish'],
+		'description' => $entry['sDescription']
+	);
 }
-$resultStr .= "</menu_red_x_list>\n";
-
-$resultStr .= "<menu_line_item_list>\n";
-foreach ($menuList as $entry) {
-	if ($entry['iTypeID'] == 1) {
-		continue;
-	}
-	$jsActions = json_decode($entry['sAction'], true);
-	$resultStr .= '		<entry dsbid="' . $entry['iDSBID'] . '" actions="' . implode(',', $jsActions) . '" notes="' . $entry['sNotes'] . '" notesspanish="' . $entry['sNoteSpanish'] . '">' . $entry['sDescription'] . "</entry>\n";
-}
-$resultStr .= "</menu_line_item_list>\n";
-
-$resultStr .= "</staticinfo>";
-echo $resultStr;
+sendResult();
 dartLogging($currentScript, "  Success", $codeStr);
-exit();

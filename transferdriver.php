@@ -2,71 +2,80 @@
 include_once 'global_CDC.php';
 include 'dart_init.php';
 $currentScript = basename($_SERVER["SCRIPT_NAME"]);
+$sendObj->webservice = $currentScript;
 
-// On various errors and failures, we'll use the status BAD update XML
-$badXML = <<< EOT
-<?xml version="1.0"?>
-<transferdriver status="failed" code="0" retry="true" errmsg="XXX">
-</transferdriver>
-EOT;
+// Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
+$codeStr = generateRandomCode(6);
 
 // Log the data
-$postData = (isset ( $_POST )) ? serialize ( $_POST ) : 'none';
-dartLogging ( $currentScript, "postdata=" . $postData );
+$postData = (isset($_POST)) ? serialize($_POST) : 'none';
+dartLogging($currentScript, "postdata=" . $postData, $codeStr);
 
 // User ID
-$userid = filter_input ( INPUT_POST, 'userid', FILTER_SANITIZE_NUMBER_INT );
-if ($userid == FALSE || is_null ( $userid )) {
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid User ID', $badXML);
-	echo $badXML;
-	exit ();
+$userid = filter_input(INPUT_POST, 'userid', FILTER_SANITIZE_NUMBER_INT);
+if ($userid == FALSE || is_null($userid)) {
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No userid supplied', 'No userid supplied in POST request');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
+	exit();
 }
 
 // SaleID
-$saleid = filter_input ( INPUT_POST, 'saleid', FILTER_SANITIZE_NUMBER_INT );
-if ($saleid == FALSE || is_null ( $saleid )) {
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid Sale ID', $badXML);
-	echo $badXML;
-	exit ();
+$saleid = filter_input(INPUT_POST, 'saleid', FILTER_SANITIZE_NUMBER_INT);
+if ($saleid == FALSE || is_null($saleid)) {
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No saleid supplied', 'No saleid supplied in POST request');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
+	exit();
 }
-
-$successXML = <<< EOT
-<?xml version="1.0"?>
-<transferdriver status="success">
-</transferdriver>
-EOT;
 
 // Done if the DEBUG user
 if ($userid == DEBUG_USERID) {
-	echo $successXML;
-	exit ();
+	sendResult();
+	exit();
 }
 
-try {
-	$dbh = new PDO ( 'spdb', '', '' );
-	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
+$sqlFailed = true;
+$sqlAttemptCount = 1;
+$sql = '';
+while ($sqlFailed) {
+	$sqlFailed = false;
+	try {
+		$dbh = new PDO('spdb', '', '');
+		$dbh->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-	// There is no difference DEBUG_USER and live driver.
-	$result = $dbh->exec ( "uspDARTTransferDriver $saleid, $userid" );
+		// There is no difference DEBUG_USER and live driver.
+		$result = $dbh->exec("uspDARTTransferDriver $saleid, $userid");
 
-	$dbh = null;
-} catch ( PDOException $e ) {
-	$errMsg = $e->getFile () . ' (' . $e->getLine () . ')' . $e->getMessage ();
-	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
-	echo $badXML;
-	exit ();
+		$dbh = null;
+	} catch (PDOException $e) {
+		$errMsg = $e->getFile() . ' (' . $e->getLine() . ')' . $e->getMessage();
+		$errMsg .= "\n\ncodeStr = $codeStr\n";
+		if (preg_match('/Timeout expired/', $eMessage) || preg_match('/SQL Server does not exist or access denied/', $eMessage) || preg_match('/deadlock victim/', $eMessage)) {
+			$sqlParts = explode(' ', $sql);
+			if ($sqlAttemptCount < DART_SQL_TIMEOUT_MAX_TRIES) {
+				$sqlAttemptCount++;
+				$sqlFailed = true;
+				sleep(DART_SQL_TIMEOUT_SLEEP);
+			} else {
+				sendError(504, ERROR_CODES::ERROR_DATABASE_TIMEOUT, 'Database is running slow, try again', 'Database timed out : ' . $sqlParts[0], true);
+				dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
+				exit();
+			}
+		} else {
+			SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, "DART : $currentScript Serious");
+			sendError(500, ERROR_CODES::ERROR_DATABASE, 'Database is down', 'Database error, see ' . DART_ERROR_LOG . ' log', false);
+			dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
+			exit();
+		}
+	}
 }
 
 if ($result === false) {
 	$errMsg = "uspDARTTransferDriver $userid, $saleid returned FALSE";
-	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
-	echo $badXML;
-	exit ();
+	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
+	sendError(500, ERROR_CODES::ERROR_DATABASE, 'Database error.', 'Database error, see ' . DART_ERROR_LOG . ' log');
+	dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
+	exit();
 }
 
-// Generate the XML
-echo $successXML;
-exit ();
-?>
+sendResult();
+dartLogging($currentScript, "  Success $adpWFNError", $codeStr);

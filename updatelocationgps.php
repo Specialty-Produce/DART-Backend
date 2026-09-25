@@ -3,38 +3,28 @@ include_once 'global_CDC.php';
 include 'dart_init.php';
 require_once 'classes_SP/class_PHPMailerSP.php';
 include_once 'classes_SP/class_LocationSP.php';
-
 $currentScript = basename($_SERVER["SCRIPT_NAME"]);
+$sendObj->webservice = $currentScript;
 
-// On various errors and failures, we'll use the status BAD update XML
-$badXML = <<< EOT
-<?xml version="1.0"?>
-<updatelocationgps status="failed" code="0" retry="false" errmsg="XXX">
-</updatelocationgps>
-EOT;
-
-$goodXML = <<< EOT
-<?xml version="1.0"?>
-<updatelocationgps status="success">
-</updatelocationgps>
-EOT;
+// Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
+$codeStr = generateRandomCode(6);
 
 $postData = '';
 foreach ($_POST as $key => $val) {
 	$postData .= $key . "=>" . $val . ", ";
 }
-dartLogging($currentScript, "postdata=" . $postData);
+dartLogging($currentScript, "postdata=" . $postData, $codeStr);
 
 // Session ID
 $sessionID = filter_input(INPUT_POST, 'dartsessionid', FILTER_SANITIZE_NUMBER_INT);
 if ($sessionID == FALSE || is_null($sessionID)) {
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid Session ID', $badXML);
-	echo $badXML;
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No dartsessionid supplied', 'No dartsessionid supplied in POST request');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
 	exit();
 }
 
 // iPadID
-$ipadID = filter_input(INPUT_POST, 'ipadid', FILTER_SANITIZE_STRING);
+$ipadID = filter_input(INPUT_POST, 'ipadid');
 if ($ipadID == FALSE || is_null($ipadID)) {
 	$ipadID = "<not set>";
 }
@@ -42,24 +32,24 @@ if ($ipadID == FALSE || is_null($ipadID)) {
 // Location ID
 $locationID = filter_input(INPUT_POST, 'locationid', FILTER_SANITIZE_NUMBER_INT);
 if ($locationID == FALSE || is_null($locationID)) {
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid Location ID', $badXML);
-	echo $badXML;
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No locationid supplied', 'No locationid supplied in POST request');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
 	exit();
 }
 
 // username
-$username = filter_input(INPUT_POST, 'username', FILTER_SANITIZE_STRING);
+$username = filter_input(INPUT_POST, 'username');
 if ($username == FALSE || is_null($username)) {
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid Username', $badXML);
-	echo $badXML;
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No username supplied', 'No username supplied in POST request');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
 	exit();
 }
 
 // Location Name
-$locationName = filter_input(INPUT_POST, 'locationname', FILTER_SANITIZE_STRING);
+$locationName = filter_input(INPUT_POST, 'locationname');
 if ($locationName == FALSE || is_null($locationName)) {
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid Location Name', $badXML);
-	echo $badXML;
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No locationname supplied', 'No locationname supplied in POST request');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
 	exit();
 }
 
@@ -129,9 +119,10 @@ $mail->Body .= "iPad ID : $ipadID\n";
 $mail->Body .= "\n\n----------\nDebug information : POST DATA : \n" . print_r($_POST, true) . "\n\n";
 
 if (!$mail->Send()) {
-	SP_ErrorLogging("Error sending email for $currentScript", true, DART_ERROR_LOG);
+	SP_ErrorLogging("Error sending email for $currentScript : " . $mail->ErrorInfo, true, DART_ERROR_LOG);
 } else
 	echo $goodXML;
-
 $mail->ClearAddresses();
-exit();
+
+sendResult();
+dartLogging($currentScript, "  Success", $codeStr);

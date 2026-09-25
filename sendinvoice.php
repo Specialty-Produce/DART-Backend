@@ -1,4 +1,5 @@
 <?php
+ini_set('max_execution_time', 3600);
 require_once 'global_CDC.php';
 $currentScript = basename($_SERVER["SCRIPT_NAME"]);
 if (preg_match('/adhoc/', $currentScript)) {
@@ -14,13 +15,13 @@ require_once 'classes_SP/class_invoicePDF.php';
 // Hula Software became Restuarant Matrix - I changed the FTP folder but otherwise left the Hula naming scheme
 // require_once 'classes_SP/class_InvoiceHula.php';
 // require_once 'classes_SP/class_InvoiceProfitProPlus.php';
-// require_once 'classes_SP/class_InvoiceBevager.php';
 // require_once 'classes_SP/class_InvoiceCheftec.php';
 // require_once 'classes_SP/class_InvoiceSP_Simple123.php';
 require_once 'classes_SP/class_InvoiceR365.php';
 require_once 'classes_SP/class_InvoicePlateIQ.php';
 require_once 'classes_SP/class_InvoiceSP_QSROnline.php';
 require_once 'classes_SP/class_InvoiceSP_XtraChef.php';
+require_once 'classes_SP/class_InvoiceCraftable.php';  // Used to be Bevager
 require_once 'EDI_SP.php';
 require_once 'classes_SP/class_SP_FTP.php';
 include_once 'classes_SP/class_SP_SFTP.php';
@@ -74,9 +75,9 @@ $processEDIs = true;
 $rsiMail = false; // Company out of business
 $hulaMail = false; // Removed since no locations are using it, tblDartInvoiceSendHula, and need to reconfigure directories
 $pppMail = false; // Company out of business
-$bevagerFTP = false; // Not been used in 3 months - disable - AZURE update if this is getting turned back on!!!
 $cheftecMail = false; // Have not sold to the single location since 11/2020
 $simple123CSV = false; // No locations in tblDARTInvoiceSendSimple123
+$craftableFTP = true;
 $r365FTP = true;
 $plateIQMail = true;
 $qsronlineCSV = true;
@@ -103,9 +104,9 @@ if ($adhoc) {
 	$rsiMail = false; // Company out of business
 	$hulaMail = false; // Removed since no locations are using it, tblDartInvoiceSendHula, and need to reconfigure directories
 	$pppMail = false; // Company out of business
-	$bevagerFTP = false; // Not been used in 3 months - disable - AZURE update if this is getting turned back on!!!
 	$cheftecMail = false; // Have not sold to the single location since 11/2020
 	$simple123CSV = false; // No locations in tblDARTInvoiceSendSimple123
+	$craftableFTP = false;
 	$r365FTP = false;
 	$plateIQMail = false;
 	$qsronlineCSV = false;
@@ -129,7 +130,7 @@ $offLinePOcount = 1;
 $rsiID = 0;
 $hulaID = 0;
 $r365Data = array();
-$bevagerIDs = array();
+$craftableIDs = array();
 $cheftecEmails = array();
 $plateIQEmailAddress = '';
 $plateIQPODefault = '';
@@ -310,13 +311,13 @@ while ($sqlFailed) {
 			}
 		}
 
-		// Bevager
-		$stmt = $dbh->query("SELECT iLocationID FROM tblDartInvoiceSendBevager WHERE iLocationID=" . $locInfo[$validSaleIDs[0]]['id']);
-		$bevagerIDs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+		// Craftable
+		$stmt = $dbh->query("SELECT iLocationID FROM tblDartInvoiceSendCraftable WHERE iLocationID=" . $locInfo[$validSaleIDs[0]]['id']);
+		$craftableIDs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 		$stmt->closeCursor();
 		if ($adhoc) {
 			if ($debug) {
-				$bevagerIDs = array();
+				$craftableIDs = array();
 			}
 		}
 
@@ -941,9 +942,9 @@ EOT;
 						SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, $currentScript . " - EDI error");
 					}
 				}
+				// Need to sleep 2 seconds so we don't overwrite a file
+				sleep(2);
 			}
-			// Need to sleep 2 seconds so we don't overwrite a file
-			sleep(2);
 		}
 	} catch (SP_Exception $e) {
 		$errorTxt = $e->getFile() . " (" . $e->getLine() . ") : " . $e->getMessage();
@@ -1116,36 +1117,36 @@ if ($r365FTP) {
 		echo "NOT sending via FTP to R365...\n";
 }
 
-// Bevager
-if ($bevagerFTP) {
+// Craftable
+if ($craftableFTP) {
 	if ($adhoc)
-		echo "Sending via FTP to Bevager...\n";
-	if (count($bevagerIDs) > 0) {
+		echo "Sending via FTP to Craftable...\n";
+	if (count($craftableIDs) > 0) {
 		$azb = new AzureBlobSP('specprodstorage', false);
 		foreach ($locInfo as $loc) {
 			try {
-				$bevFilename = $loc['id'] . '_' . $loc['saleID'] . '.csv';
-				$invBev = new InvoiceBevager();
-				$bevString = $invBev->getBevHeader();
-				$invBev->retrieveInvoice($loc['saleID']);
-				$bevString .= $invBev->generateBevOutput();
-				$bevFile = SPConsts::TempDir . $bevFilename;
-				file_put_contents($bevFile, $bevString);
-				$ftpDir = $invBev::FILEMAGE_FTP_DIR . $invBev::FTP_INVOICES;
-				$azb->putBlockBlobFile(AzureBlobSP::AZURE_STORAGE_FTP_DIR, $ftpDir, $bevFilename, $bevFile, 'text/csv');
+				$craftableFilename = $loc['id'] . '_' . $loc['saleID'] . '.csv';
+				$invCraftable = new InvoiceCraftable();
+				$craftableString = $invCraftable->getCraftableHeader();
+				$invCraftable->retrieveInvoice($loc['saleID']);
+				$craftableString .= $invCraftable->generateCraftableOutput();
+				$craftableFile = SPConsts::TempDir . $craftableFilename;
+				file_put_contents($craftableFile, $craftableString);
+				$ftpDir = $invCraftable::FILEMAGE_FTP_DIR . $invCraftable::FTP_INVOICES;
+				$azb->putBlockBlobFile(AzureBlobSP::AZURE_STORAGE_FTP_DIR, $ftpDir, $craftableFilename, $craftableFile, 'text/csv');
 				sleep(3);
-				SP_ErrorLogging("Bevager file created : $ftpDir : $bevFilename", true, '', "Bevager EDI : $bevFilename");
-				unlink($bevFile);
+				SP_ErrorLogging("Craftable file created : $ftpDir : $craftableFilename", true, '', "Craftable EDI : $craftableFilename");
+				unlink($craftableFile);
 			} catch (SP_Exception $spe) {
-				$errMsg = "Bevager : Retrieve invoice error : " . $spe->getMessage();
-				SP_errorLogging($errMsg, true, '', $currentScript . " - Bevager error");
+				$errMsg = "Craftable : Retrieve invoice error : " . $spe->getMessage();
+				SP_errorLogging($errMsg, true, '', $currentScript . " - Craftable error");
 				continue;
 			}
 		}
 	}
 } else {
 	if ($adhoc)
-		echo "NOT sending via FTP to Bevager...\n";
+		echo "NOT sending via FTP to Craftable...\n";
 }
 
 // Cheftec Invoices

@@ -1,24 +1,15 @@
 <?php
 include_once 'global_CDC.php';
 include 'dart_init.php';
-$currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
+$currentScript = basename($_SERVER["SCRIPT_NAME"]);
+$sendObj->webservice = $currentScript;
 
-// On various errors and failures, we'll use the status BAD update XML
-$badXML = <<< EOT
-<?xml version="1.0"?>
-<endroute status="failed" code="0" retry="true" errmsg="XXX">
-</endroute>
-EOT;
+// Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
+$codeStr = generateRandomCode(6);
 
 // Get the POST data
-$appJSON = $_POST ['jsondata'];
-dartLogging($currentScript, "jsondata=" . $appJSON);
+$appJSON = $_POST['jsondata'];
+dartLogging($currentScript, "jsondata=" . $appJSON, $codeStr);
 
-$resultXML = <<< EOT
-<?xml version="1.0"?>
-<endroute status="success">
-</endroute>
-EOT;
-echo $resultXML;
-exit();
-?>
+sendResult();
+dartLogging($currentScript, "  Success", $codeStr);

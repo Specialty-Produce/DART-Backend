@@ -58,6 +58,8 @@ function dartLoggingHour($webservice, $data, $code = '') {
 	fwrite($confirmFile, $timeStamp . " : " . $code . " : " . $data . "\n");
 	fclose($confirmFile);
 }
+// 250527 : CDC : This function is no longer used by the new JSON webservices, but is left here for reference.
+/*
 function DART_escapeXmlString($str) {
 	// must do ampersand first
 	$search = array(
@@ -76,6 +78,7 @@ function DART_escapeXmlString($str) {
 	);
 	return str_replace($search, $repl, $str);
 }
+	*/
 
 $pullColors = array(
 	"#FFFFFF",
@@ -91,3 +94,66 @@ $invoiceStatus = array(
 	"Currently Being Delivered",
 	"Delivery Complete"
 );
+
+/*
+Sends a correctly formatted message using the REST API standard.
+200-level (Success) – request was successful
+400-level (Client error) – client sent an invalid request
+500-level (Server error) – server failed to fulfill a valid request due to an error with server
+
+Details:
+$sendObj = new stdClass();
+$sendObj->webservice = 'response.php';
+$sendObj->status = 'success';
+$sendObj->statusCode = 200;
+$sendObj->retry = false;
+$sendObj->error = new stdClass();
+$sendObj->error->code = "This could be numeric or a CONSTANT or not exist.";
+$sendObj->error->userMessage = "This is what would be displayed to the user.";
+$sendObj->error->systemMessage = "This would have debugging information for developers.";
+$sendObj->error->timestamp = date('Y-m-d H:i:s');
+$sendObj->data = new stdClass();
+*/
+
+$sendObj = new stdClass();
+$sendObj->webservice = '';
+$sendObj->status = 'success';
+$sendObj->statusCode = 200;
+// $sendObj->error = new stdClass();
+// $sendObj->error->code = 0;
+// $sendObj->error->userMessage = '';
+// $sendObj->error->systemMessage = '';
+// $sendObj->error->retry = false;
+// $sendObj->error->timestamp = '';
+$sendObj->data = new stdClass();
+
+function sendError($statusCode, $code, $userMessage, $systemMessage = '', $retry = false) {
+	global $sendObj;
+	$sendObj->status = 'error';
+	$sendObj->statusCode = $statusCode;
+	$sendObj->error = new stdClass();
+	$sendObj->error->code = $code;
+	$sendObj->error->retry = $retry;
+	$sendObj->error->userMessage = $userMessage;
+	$sendObj->error->systemMessage = $systemMessage;
+	$sendObj->error->timestamp = date('Y-m-d H:i:s');
+	sendResult();
+}
+
+function sendResult() {
+	global $sendObj;
+	http_response_code($sendObj->statusCode);
+	header('Content-Type: application/json; charset=utf-8');
+	echo json_encode($sendObj, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+}
+
+interface ERROR_CODES {
+	const ERROR_UNKNOWN = 1;
+	const ERROR_NETWORK = 2;
+	const ERROR_DATABASE = 3;
+	const ERROR_DATABASE_TIMEOUT = 4;
+	const ERROR_NO_RESULT = 5; // When a result is expected
+	const ERROR_INVALID_DATA = 6; // As supplied by the user
+	const ERROR_INVALID_USER = 7;
+	const ERROR_MAINTENANCE_MODE = 8;
+}

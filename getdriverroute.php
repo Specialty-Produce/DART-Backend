@@ -2,13 +2,7 @@
 include_once 'global_CDC.php';
 include 'dart_init.php';
 $currentScript = basename($_SERVER["SCRIPT_NAME"]);
-
-// On various errors and failures, we'll use the status BAD update XML
-$badXML = <<< EOT
-<?xml version="1.0"?>
-<driverroute_location_list status="failed" code="0" retry="true" errmsg="XXX">
-</driverroute_location_list>
-EOT;
+$sendObj->webservice = $currentScript;
 
 // Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
 $codeStr = generateRandomCode(6);
@@ -20,58 +14,84 @@ dartLogging($currentScript, "postdata=" . $postData, $codeStr);
 // User ID
 $userid = filter_input(INPUT_POST, 'userid', FILTER_SANITIZE_NUMBER_INT);
 if ($userid == FALSE || is_null($userid)) {
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid User ID', $badXML);
-	echo $badXML;
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No userid supplied', 'No userid supplied in POST request');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
 	exit();
 }
 
-try {
-	$dbh = new PDO('spdb', '', '');
-	$dbh->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-	// Get the driver route
-	if ($userid == DEBUG_USERID) {
-		// Get a sessionID
-		$stmt = $dbh->query("uspDARTInvoicesAssignDebug");
-		$result = $stmt->fetch(PDO::FETCH_ASSOC);
-		$dartSessionID = $result['iDartSessionID'];
-		$stmt->closeCursor();
-		// Determine the Sync state
-		$sf = fopen("driverstate.txt", "r");
-		$state = fread($sf, 1);
-		fclose($sf);
-		// Get the route data
-		$debugTable = ($state == "0") ? "tblDartDataDriverRoute" : "tblDartDataDriverRouteRsync";
-		$stmt = $dbh->query("select * from $debugTable order by iLocationDestinationID");
-		$routeInfo = $stmt->fetchAll(PDO::FETCH_BOTH);
-		$stmt->closeCursor();
-		// Get the signers
-		$stmt = $dbh->query("select * from tblDartDataSigners");
-		$signerInfo = $stmt->fetchAll(PDO::FETCH_BOTH);
-		$stmt->closeCursor();
-	} else {
-		// Complete the assignment of invoices to the driver and get the sessionid
-		$assignResult = $dbh->exec("uspDARTInvoicesAssign $userid");
-
-		// Get the invoices assigned to the driver
-		$stmt = $dbh->query("uspDARTGetDriverRoute $userid");
-		$routeInfo = $stmt->fetchAll(PDO::FETCH_BOTH);
-		$stmt->closeCursor();
-
-		// Get the signers
-		$stmt = $dbh->query("uspDARTGetDriverRouteSigners $userid");
-		$signerInfo = $stmt->fetchAll(PDO::FETCH_BOTH);
-		$stmt->closeCursor();
+$sqlFailed = true;
+$sqlAttemptCount = 1;
+$sql = '';
+while ($sqlFailed) {
+	$sqlFailed = false;
+	try {
+		$dbh = new PDO('spdb', '', '');
+		$dbh->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+		// Get the driver route
+		if ($userid == DEBUG_USERID) {
+			// Get a sessionID
+			$sql = "uspDARTInvoicesAssignDebug";
+			$stmt = $dbh->query($sql);
+			$result = $stmt->fetch(PDO::FETCH_ASSOC);
+			$dartSessionID = $result['iDartSessionID'];
+			$stmt->closeCursor();
+			// Determine the Sync state
+			$sf = fopen("driverstate.txt", "r");
+			$state = fread($sf, 1);
+			fclose($sf);
+			// Get the route data
+			$debugTable = ($state == "0") ? "tblDartDataDriverRoute" : "tblDartDataDriverRouteRsync";
+			$sql = "select * from $debugTable order by iLocationDestinationID";
+			$stmt = $dbh->query($sql);
+			$routeInfo = $stmt->fetchAll(PDO::FETCH_BOTH);
+			$stmt->closeCursor();
+			// Get the signers
+			$sql = "select * from tblDartDataSigners";
+			$stmt = $dbh->query($sql);
+			$signerInfo = $stmt->fetchAll(PDO::FETCH_BOTH);
+			$stmt->closeCursor();
+		} else {
+			// Complete the assignment of invoices to the driver and get the sessionid
+			$sql = "uspDARTInvoicesAssign $userid";
+			$assignResult = $dbh->exec($sql);
+			// Get the invoices assigned to the driver
+			$sql = "uspDARTGetDriverRoute $userid";
+			$stmt = $dbh->query($sql);
+			$routeInfo = $stmt->fetchAll(PDO::FETCH_BOTH);
+			$stmt->closeCursor();
+			// Get the signers
+			$sql = "uspDARTGetDriverRouteSigners $userid";
+			$stmt = $dbh->query($sql);
+			$signerInfo = $stmt->fetchAll(PDO::FETCH_BOTH);
+			$stmt->closeCursor();
+		}
+		$dbh = null;
+	} catch (PDOException $e) {
+		$errMsg = "SQL = $sql\n";
+		$eMessage = $e->getMessage();
+		$errMsg .= $e->getFile() . ' (' . $e->getLine() . ')' . " sqlAttemptCount=$sqlAttemptCount : " . $eMessage;
+		$errMsg .= "\n\ncodeStr = $codeStr\n";
+		if (preg_match('/Timeout expired/', $eMessage) || preg_match('/SQL Server does not exist or access denied/', $eMessage) || preg_match('/deadlock victim/', $eMessage)) {
+			$sqlParts = explode(' ', $sql);
+			if ($sqlAttemptCount < DART_SQL_TIMEOUT_MAX_TRIES) {
+				$sqlAttemptCount++;
+				$sqlFailed = true;
+				sleep(DART_SQL_TIMEOUT_SLEEP);
+			} else {
+				sendError(504, ERROR_CODES::ERROR_DATABASE_TIMEOUT, 'Database is running slow, try again', 'Database timed out : ' . $sqlParts[0], true);
+				dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
+				exit();
+			}
+		} else {
+			SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, "DART : $currentScript Serious");
+			sendError(500, ERROR_CODES::ERROR_DATABASE, 'Database is down', 'Database error, see ' . DART_ERROR_LOG . ' log', false);
+			dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
+			exit();
+		}
 	}
-	$dbh = null;
-} catch (PDOException $e) {
-	$errMsg = $e->getFile() . ' (' . $e->getLine() . ')' . $e->getMessage();
-	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
-	echo $badXML;
-	exit();
 }
 
-// Parse the route data to generate the arrays for the different parts of the XML
+// Parse the route data to generate the arrays
 // mb_convert_encoding ( xxx, "UTF-8", "Windows-1252" )
 $location = array();
 $locationList = array();
@@ -97,11 +117,11 @@ foreach ($routeInfo as $entry) {
 			'phone' => mb_convert_encoding($entry['sPhone'], "UTF-8", "Windows-1252"),
 			'deliverytime' => $entry['sTime'],
 			'requirespaper' => $entry['iInvoiceException'],
-			'allowdarkdrop' => ($entry['iNDS'] == 0) ? 'true' : 'false',
+			'allowdarkdrop' => ($entry['iNDS'] == 0) ? true : false,
 			'locnotes' => mb_convert_encoding($entry['txtLocationNotes'], "UTF-8", "Windows-1252"),
 			'salesname' => mb_convert_encoding($entry['txtSalesPerson'], "UTF-8", "Windows-1252"),
 			'salesemail' => mb_convert_encoding($entry['txtEmail'], "UTF-8", "Windows-1252"),
-			'salesphone' => mb_convert_encoding($entry['txtCellPhone'], "UTF-8", "Windows-1252"),
+			'salesphone' => formatPhone(mb_convert_encoding($entry['txtCellPhone'], "UTF-8", "Windows-1252")),
 			'acctnote' => mb_convert_encoding($entry['sAccountingNote'], "UTF-8", "Windows-1252"),
 			'terms' => mb_convert_encoding($entry['sTerms'], "UTF-8", "Windows-1252"),
 			'invoices' => array(),
@@ -110,16 +130,16 @@ foreach ($routeInfo as $entry) {
 		// Add the invoice and set the update time
 		$location[$locID]['invoices'][] = array(
 			'lastupdate' => $lastUpdate,
-			'number' => $entry['iSaleID'],
-			'currentstate' => (is_null($entry['iDartStatusID'])) ? 0 : $entry['iDartStatusID'],
+			'number' => intval($entry['iSaleID']),
+			'currentstate' => (is_null($entry['iDartStatusID'])) ? 0 : intval($entry['iDartStatusID']),
 			'invnotes' => mb_convert_encoding($entry['txtInvoiceNotes'], "UTF-8", "Windows-1252")
 		);
 	} else {
 		// We have already seen this location, so add the invoice and change the lastupdate time if needed
 		$location[$locID]['invoices'][] = array(
 			'lastupdate' => $lastUpdate,
-			'number' => $entry['iSaleID'],
-			'currentstate' => (is_null($entry['iDartStatusID'])) ? 0 : $entry['iDartStatusID'],
+			'number' => intval($entry['iSaleID']),
+			'currentstate' => (is_null($entry['iDartStatusID'])) ? 0 : intval($entry['iDartStatusID']),
 			'invnotes' => mb_convert_encoding($entry['txtInvoiceNotes'], "UTF-8", "Windows-1252")
 		);
 		if (strtotime($lastUpdate) > strtotime((string)$location[$locID]['lastupdate']))
@@ -130,61 +150,53 @@ foreach ($routeInfo as $entry) {
 // Add the signer info for each location
 foreach ($signerInfo as $entry) {
 	$location[$entry['iLocationDestinationID']]['signers'][] = array(
-		'userID' => $entry['iUserID'],
+		'userID' => intval($entry['iUserID']),
 		'fname' => mb_convert_encoding($entry['txtFirstName'], "UTF-8", "Windows-1252"),
 		'lname' => mb_convert_encoding($entry['txtLastName'], "UTF-8", "Windows-1252"),
-		'cell' => preg_replace('/[^0-9]/', '', $entry['txtCellPhone']),
-		'email' => $entry['txtEmail']
+		'cell' => formatPhone($entry['txtCellPhone']),
+		'email' => $entry['txtEmail'] ?? ''
 	);
 }
 
-// Generate the XML
-$resultStr = '<?xml version="1.0"?>' . "\n";
-$resultStr .= '<driverroute_location_list status="success">' . "\n";
-$sortCount = 1;
+$sendObj->data->locationList = array();
 foreach ($locationList as $locID) {
-	$requiresPaper = ($location[$locID]['requirespaper'] == -1) ? "true" : "false";
-	$resultStr .= '<location id="' . $locID . '" sort="' . $sortCount . '" lastupdate="' . $location[$locID]['lastupdate'] . '" requirespaper="' . $requiresPaper . '" allowdarkdrop="' . $location[$locID]['allowdarkdrop'] . '">' . "\n";
-	$sortCount++;
-	$resultStr .= "<name>" . $location[$locID]['name'] . "</name>\n";
-	$resultStr .= "<street>" . $location[$locID]['street'] . "</street>\n";
-	$resultStr .= "<city>" . $location[$locID]['city'] . "</city>\n";
-	$resultStr .= "<state>" . $location[$locID]['state'] . "</state>\n";
-	$resultStr .= "<zip>" . $location[$locID]['zip'] . "</zip>\n";
-	if (($location[$locID]['gpslat'] == FALSE || is_null($location[$locID]['gpslat']) || $location[$locID]['gpslat'] == 0) || ($location[$locID]['gpslon'] == FALSE || is_null($location[$locID]['gpslon']) || $location[$locID]['gpslon'] == 0)) {
-		// (32.77515136946222, -117.29759216308594)
-		$resultStr .= "<gpslat>32.7751513</gpslat>\n";
-		$resultStr .= "<gpslon>-117.2975921</gpslon>\n";
-	} else {
-		$resultStr .= "<gpslat>" . $location[$locID]['gpslat'] . "</gpslat>\n";
-		$resultStr .= "<gpslon>" . $location[$locID]['gpslon'] . "</gpslon>\n";
-	}
-	$resultStr .= "<phone>" . $location[$locID]['phone'] . "</phone>\n";
-	$resultStr .= "<deliverytime>" . $location[$locID]['deliverytime'] . "</deliverytime>\n";
-	$resultStr .= "<notes>" . $location[$locID]['locnotes'] . "</notes>\n";
-	$resultStr .= "<salesname>" . $location[$locID]['salesname'] . "</salesname>\n";
-	$resultStr .= "<salesemail>" . $location[$locID]['salesemail'] . "</salesemail>\n";
-	$resultStr .= "<salesphone>" . $location[$locID]['salesphone'] . "</salesphone>\n";
-	$resultStr .= "<accountingnote>" . $location[$locID]['acctnote'] . "</accountingnote>\n";
-	$resultStr .= "<accountingterms>" . $location[$locID]['terms'] . "</accountingterms>\n";
-	$resultStr .= "<invoices_invoice_list>\n";
-	foreach ($location[$locID]['invoices'] as $entry) {
-		$resultStr .= '<invoice lastupdate="' . $entry['lastupdate'] . '" currentstate="' . $entry['currentstate'] . '">' . $entry['number'] . "</invoice>\n";
-	}
-	$resultStr .= "</invoices_invoice_list>\n";
-	$resultStr .= "<signers_entry_list>\n";
-	if ($requiresPaper == "false") {
+	$requiresPaper = ($location[$locID]['requirespaper'] == -1) ? true : false;
+	$signersList = array();
+	if ($requiresPaper == false) {
 		foreach ($location[$locID]['signers'] as $entry) {
-			$resultStr .= '<entry id="' . $entry['userID'] . '" cell="' . $entry['cell'] . '" email="' . $entry['email'] . '" first="' . $entry['fname'] . '" last="' . $entry['lname'] . '">' . $entry['fname'] . " " . $entry['lname'] . "</entry>\n";
+			$signersList[] = array(
+				'id' => intval($entry['userID']),
+				'cell' => formatPhone($entry['cell']),
+				'email' => $entry['email'] ?? '',
+				'fname' => mb_convert_encoding($entry['fname'], "UTF-8", "Windows-1252"),
+				'lname' => mb_convert_encoding($entry['lname'], "UTF-8", "Windows-1252")
+			);
 		}
 	}
-	// The signer to use if there is a paper invoice present.
-	// With version 1.0 build 37 this is now hard-coded in the app.
-	// $resultStr .= '<entry id="13358">' . "Printed Invoice</entry>\n";
-	$resultStr .= "</signers_entry_list>\n";
-	$resultStr .= "</location>\n";
+	$sendObj->data->locationList[] = array(
+		'id' => intval($locID),
+		'sort' => intval($location[$locID]['sort']),
+		'lastupdate' => $location[$locID]['lastupdate'],
+		'name' => $location[$locID]['name'],
+		'street' => $location[$locID]['street'],
+		'city' => $location[$locID]['city'],
+		'state' => $location[$locID]['state'],
+		'zip' => $location[$locID]['zip'],
+		'gpslat' => floatval($location[$locID]['gpslat']),
+		'gpslon' => floatval($location[$locID]['gpslon']),
+		'phone' => formatPhone($location[$locID]['phone']),
+		'deliverytime' => $location[$locID]['deliverytime'],
+		'notes' => $location[$locID]['locnotes'],
+		'salesname' => $location[$locID]['salesname'],
+		'salesemail' => $location[$locID]['salesemail'],
+		'salesphone' => formatPhone($location[$locID]['salesphone']),
+		'accountingnote' => $location[$locID]['acctnote'],
+		'accountingterms' => $location[$locID]['terms'],
+		'requirespaper' => $requiresPaper,
+		'allowdarkdrop' => $location[$locID]['allowdarkdrop'],
+		'invoices' => $location[$locID]['invoices'],
+		'signers' => $signersList
+	);
 }
-$resultStr .= "</driverroute_location_list>";
-echo $resultStr;
+sendResult();
 dartLogging($currentScript, "  Success", $codeStr);
-exit();

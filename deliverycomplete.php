@@ -2,7 +2,6 @@
 include_once 'global_CDC.php';
 include_once 'classes_SP/class_AzureFileSP.php';
 
-$codeStr = generateRandomCode(6);
 $currentScript = basename($_SERVER["SCRIPT_NAME"]);
 if (preg_match('/adhoc/', $currentScript)) {
 	$adhoc = true;
@@ -14,34 +13,19 @@ if (preg_match('/adhoc/', $currentScript)) {
 }
 
 if ($adhoc) {
-	/* XXX */
+	/* Add/Remove as needed */
 	echo "Ad Hoc Exiting...";
 	exit();
 }
-
-// On various errors and failures, we'll use the status BAD update XML
-$badXML = <<< EOT
-<?xml version="1.0"?>
-<deliverycomplete status="failed" code="0" retry="true" errmsg="XXX">
-</deliverycomplete>
-EOT;
-
-$successXML = <<< EOT
-<?xml version="1.0"?>
-<deliverycomplete status="success">
-</deliverycomplete>
-EOT;
+$sendObj->webservice = $currentScript;
 
 // Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
-
-// error_log("$currentScript : $codeStr : START");
+$codeStr = generateRandomCode(6);
 
 // Get the POST data
 if (isset($_POST['jsondata'])) {
 	$appJSON = $_POST['jsondata'];
-	// dartLogging ( $currentScript, "jsondata=" . (preg_replace ( '/(,"signatureimage":")[^"]+(","status")/', '$1 --- $2', $appJSON )), $codeStr );
 	dartLoggingHour($currentScript, "jsondata=" . $appJSON, $codeStr);
-	// dartLogging ( $currentScript, "POST=" . print_r($_POST, true), $codeStr );
 } else {
 	if ($adhoc) {
 		$appJSON = file_get_contents('adhoc_dc_json.txt');
@@ -61,19 +45,15 @@ if (isset($_POST['debuginfo'])) {
 }
 
 if (MAINTENANCE_MODE) {
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Maintenace Mode', $badXML);
-	// $badXML = preg_replace ( '/retry="true"/', 'retry="false"', $badXML );
-	echo $badXML;
-	dartLoggingHour($currentScript, " in Maintenace Mode", $codeStr);
+	sendError(503, ERROR_CODES::ERROR_MAINTENANCE_MODE, 'Site undergoing maintenance. Please try again.', 'Maintenance Mode is ON', true);
+	dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
 	exit();
 }
 
 // appJSON
 if ($appJSON == FALSE || is_null($appJSON)) {
-	dartLoggingHour($currentScript, "    jsondata is FALSE or NULL : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'], $codeStr);
-	$badXML = preg_replace('/XXX/', $currentScript . ' : No jsondata supplied', $badXML);
-	// $badXML = preg_replace ( '/retry="true"/', 'retry="false"', $badXML );
-	echo $badXML;
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No jsondata supplied', 'No jsondata supplied in POST request');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
 	exit();
 }
 
@@ -90,8 +70,8 @@ if (!preg_match('/,"userid":"\d+"}$/', $appJSON)) {
 // Force success for a SaleID that had bad JSON that was fixed and adhoc completed
 $invoiceBadJSON = false;
 if ($invoiceBadJSON !== false && preg_match('/"saleid":"' . $invoiceBadJSON . '"/', $appJSON)) {
-	echo $successXML;
-	SP_ErrorLogging("Bad JSON invoice $invoiceBadJSON send SUCCESS XML.", true, DART_ERROR_LOG, "DART - $currentScript - Invalid JSON data");
+	sendResult();
+	SP_ErrorLogging("Bad JSON invoice $invoiceBadJSON send SUCCESS JSON.", true, DART_ERROR_LOG, "DART - $currentScript - Invalid JSON data");
 	exit();
 }
 
@@ -101,13 +81,12 @@ if ($jd == FALSE || is_null($jd)) {
 	// Capture bad JSON data that has been fixed already...
 	if (strpos($appJSON, '"saleid":"4095326"') !== false) {
 		dartLoggingHour($currentScript, "    FIXED decoded jsondata is FALSE or NULL : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'], $codeStr);
-		echo $successXML;
+		sendResult();
 		SP_ErrorLogging("Decoded JSON data is invalid for codeStr = $codeStr. FIXED", true, DART_ERROR_LOG, "DART - $currentScript - Invalid JSON data");
 		exit();
 	} else {
-		dartLoggingHour($currentScript, "    decoded jsondata is FALSE or NULL : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'], $codeStr);
-		$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid jsondata supplied', $badXML);
-		echo $badXML;
+		sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'Bad JSON data', 'Decoded jsondata is FALSE or NULL');
+		dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
 		SP_ErrorLogging("Decoded JSON data is invalid for codeStr = $codeStr. Hand fix and adhoc enter data", true, DART_ERROR_LOG, "DART - $currentScript - Invalid JSON data");
 		exit();
 	}
@@ -117,10 +96,9 @@ if ($adhoc) {
 	echo "JSON Data : <br/><pre>" . print_r($jd, true) . "</pre><br/><hr/><br/>";
 }
 
-
 // Done if the DEBUG user
 if ($jd->userid == DEBUG_USERID) {
-	echo $successXML;
+	sendResult();
 	exit();
 }
 
@@ -150,11 +128,9 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 	}
 	if (!is_dir($filedir)) {
 		if (!mkdir($filedir)) {
-			$errMsg = "DART : Could not create folder for locationID = " . $jd->deliveryjson->delivery->locationid . " : $filedir";
-			dartLoggingHour($currentScript, "    Could not create folder for locationID = " . $jd->deliveryjson->delivery->locationid, $codeStr);
+			sendError(500, ERROR_CODES::ERROR_INVALID_DATA, 'Error saving signature image.', "Could not create folder for locationID = " . $jd->deliveryjson->delivery->locationid, true);
+			dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
 			SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, "DART : Could not create folder : $currentScript");
-			$badXML = preg_replace('/XXX/', $currentScript . ' : Could not create folder for locationID = ' . $jd->deliveryjson->delivery->locationid, $badXML);
-			echo $badXML;
 			exit();
 		}
 	}
@@ -164,43 +140,39 @@ if ($signerID != PRINTED_INVOICE_ID && $isDarkDrop == false) {
 		$file = $filedir . '/' . $invoice->saleid . ".png";
 		// Create from the encoded string
 		if (!$imgSrc = imagecreatefromstring(base64_decode($invoice->signatureimage))) {
-			$errMsg = "Could not create image from signatureimage data, saleID = " . $invoice->saleid . ", code = " . $codeStr . " : file = $file";
-			SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
-			dartLoggingHour($currentScript, "    Could not create image from signatureimage data", $codeStr);
-			$badXML = preg_replace('/XXX/', $currentScript . ' : Could not create image from signatureimage data', $badXML);
-
 			// Capture and clear repeating call **********
 			if ($invoice->saleid == 3415845) {
-				$badXML = $successXML;
 				$errMsg = "Captured bad image saleID and sent success, saleID = " . $invoice->saleid . ", code = " . $codeStr;
 				SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
 				dartLoggingHour($currentScript, "    Captured bad image saleID and sent success", $codeStr);
-				continue;
+				sendResult();
+				exit();
+			} else {
+				$errMsg = "Could not create image from signatureimage data, saleID = " . $invoice->saleid . ", code = " . $codeStr . " : file = $file";
+				SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
+				sendError(500, ERROR_CODES::ERROR_INVALID_DATA, 'Error saving signature image.', $errMsg, true);
+				dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
+				exit();
 			}
-			echo $badXML;
-			exit();
 		} else {
 			// Make the new image
 			$width = imagesx($imgSrc);
 			$height = imagesy($imgSrc);
 			if (!$imgDest = imagecreatetruecolor($width, $height)) {
-				dartLoggingHour($currentScript, "    Could not create new true color image", $codeStr);
-				$badXML = preg_replace('/XXX/', $currentScript . ' : Could not create new true color image', $badXML);
-				echo $badXML;
+				sendError(500, ERROR_CODES::ERROR_INVALID_DATA, 'Error saving signature image.', "Could not create new true color image.", true);
+				dartLogging($sendObj->webservice, $json_encode($sendObj), $codeStr);
 				exit();
 			} else {
 				// Copy sent into new
 				if (!imagecopy($imgDest, $imgSrc, 0, 0, 0, 0, $width, $height)) {
-					dartLoggingHour($currentScript, "    Could not copy source image to new image", $codeStr);
-					$badXML = preg_replace('/XXX/', $currentScript . ' : Could not copy source image to new image', $badXML);
-					echo $badXML;
+					sendError(500, ERROR_CODES::ERROR_INVALID_DATA, 'Error saving signature image.', "Could not copy source image to new image.", true);
+					dartLogging($sendObj->webservice, $json_encode($sendObj), $codeStr);
 					exit();
 				} else {
 					// Write it out
 					if (!imagepng($imgDest, $file)) {
-						dartLoggingHour($currentScript, "    Could not save png image", $codeStr);
-						$badXML = preg_replace('/XXX/', $currentScript . ' : Could not save png image', $badXML);
-						echo $badXML;
+						sendError(500, ERROR_CODES::ERROR_INVALID_DATA, 'Error saving signature image.', "Could not save png image.", true);
+						dartLogging($sendObj->webservice, $json_encode($sendObj), $codeStr);
 						exit();
 					}
 				}
@@ -511,22 +483,19 @@ while ($sqlFailed) {
 		$errMsg .= "saleJSON =  " . json_encode($saleGD_JSON) . "\n";
 		if (preg_match('/Timeout expired/', $eMessage) || preg_match('/SQL Server does not exist or access denied/', $eMessage) || preg_match('/deadlock victim/', $eMessage)) {
 			$sqlParts = explode(' ', $sql);
-			SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, 'DART : DeliveryComplete Retry : ' . $sqlParts[0]);
 			if ($sqlAttemptCount < DART_SQL_TIMEOUT_MAX_TRIES) {
 				$sqlAttemptCount++;
 				$sqlFailed = true;
 				sleep(DART_SQL_TIMEOUT_SLEEP);
 			} else {
-				$badXML = preg_replace('/XXX/', $currentScript . ' : Database timeout, see ' . DART_ERROR_LOG . ' log', $badXML);
-				$badXML = preg_replace('/code="0"/', 'code="1"', $badXML);
-				echo $badXML;
+				sendError(504, ERROR_CODES::ERROR_DATABASE_TIMEOUT, 'Database is running slow, try again', 'Database timed out : ' . $sqlParts[0], true);
+				dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
 				exit();
 			}
 		} else {
-			SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, 'DART : DeliveryComplete Serious');
-			dartLoggingHour($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
-			$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
-			echo $badXML;
+			SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, "DART : $currentScript Serious");
+			sendError(500, ERROR_CODES::ERROR_DATABASE, 'Database is down', 'Database error, see ' . DART_ERROR_LOG . ' log', false);
+			dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
 			exit();
 		}
 	}
@@ -535,36 +504,32 @@ while ($sqlFailed) {
 if ($resultDelivered === false) {
 	$errMsg = "$currentScript : uspDARTDelivered $updateCode, $signerID, $invXML returned FALSE : $codeStr";
 	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
-	dartLoggingHour($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
-	echo $badXML;
+	sendError(500, ERROR_CODES::ERROR_DATABASE, 'Database error.', $errMsg);
+	dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
 	exit();
 }
 
 if ($resultUpdateChanges === false) {
 	$errMsg = "uspDARTDeliveryCompleteUpdates $saleDetailXML returned FALSE : $codeStr";
 	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
-	dartLoggingHour($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
-	echo $badXML;
+	sendError(500, ERROR_CODES::ERROR_DATABASE, 'Database error.', $errMsg);
+	dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
 	exit();
 }
 
 if ($resultDeliveryFail === false) {
 	$errMsg = "uspDARTUpdateAtDeliveryFail $updateAtDeliveryFailXML returned FALSE : $codeStr";
 	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
-	dartLoggingHour($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
-	echo $badXML;
+	sendError(500, ERROR_CODES::ERROR_DATABASE, 'Database error.', $errMsg);
+	dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
 	exit();
 }
 
 if ($resultUpdateGreenDiscount === false) {
 	$errMsg = "uspDARTDeliveryCompleteUpdatesGreenDiscount " . json_encode($saleGD_JSON) . " returned FALSE : $codeStr";
 	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
-	dartLoggingHour($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
-	echo $badXML;
+	sendError(500, ERROR_CODES::ERROR_DATABASE, 'Database error.', $errMsg);
+	dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
 	exit();
 }
 
@@ -664,22 +629,19 @@ if (count($jd->new_invoice_ship_today_list) > 0) {
 			$errMsg .= "\ninvXML = " . $invXML;
 			if (preg_match('/Timeout expired/', $eMessage) || preg_match('/SQL Server does not exist or access denied/', $eMessage) || preg_match('/deadlock victim/', $eMessage)) {
 				$sqlParts = explode(' ', $sql);
-				SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, 'DART : DeliveryComplete : New Invoice Retry : ' . $sqlParts[0]);
 				if ($sqlAttemptCount < DART_SQL_TIMEOUT_MAX_TRIES) {
 					$sqlAttemptCount++;
 					$sqlFailed = true;
 					sleep(DART_SQL_TIMEOUT_SLEEP);
 				} else {
-					$badXML = preg_replace('/XXX/', $currentScript . ' : Database timeout, see ' . DART_ERROR_LOG . ' log', $badXML);
-					$badXML = preg_replace('/code="0"/', 'code="1"', $badXML);
-					echo $badXML;
+					sendError(504, ERROR_CODES::ERROR_DATABASE_TIMEOUT, 'Database is running slow, try again', 'Database timed out : ' . $sqlParts[0], true);
+					dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
 					exit();
 				}
 			} else {
-				SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, 'DART : DeliveryComplete : New Invoice Serious');
-				dartLoggingHour($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
-				$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
-				echo $badXML;
+				SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, "DART : $currentScript Serious");
+				sendError(500, ERROR_CODES::ERROR_DATABASE, 'Database is down', 'Database error, see ' . DART_ERROR_LOG . ' log', false);
+				dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
 				exit();
 			}
 		}
@@ -778,25 +740,21 @@ if (count($jd->new_invoice_ship_tomorrow_list) > 0) {
 			$eMessage = $e->getMessage();
 			$errMsg .= $e->getFile() . ' (' . $e->getLine() . ')' . " sqlAttemptCount=$sqlAttemptCount : " . $eMessage;
 			$errMsg .= "\n\ncodeStr = $codeStr\n";
-			$errMsg .= "\ninvXML = " . $invXML;
 			if (preg_match('/Timeout expired/', $eMessage) || preg_match('/SQL Server does not exist or access denied/', $eMessage) || preg_match('/deadlock victim/', $eMessage)) {
 				$sqlParts = explode(' ', $sql);
-				SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, 'DART : DeliveryComplete : New Invoice Retry : ' . $sqlParts[0]);
 				if ($sqlAttemptCount < DART_SQL_TIMEOUT_MAX_TRIES) {
 					$sqlAttemptCount++;
 					$sqlFailed = true;
 					sleep(DART_SQL_TIMEOUT_SLEEP);
 				} else {
-					$badXML = preg_replace('/XXX/', $currentScript . ' : Database timeout, see ' . DART_ERROR_LOG . ' log', $badXML);
-					$badXML = preg_replace('/code="0"/', 'code="1"', $badXML);
-					echo $badXML;
+					sendError(504, ERROR_CODES::ERROR_DATABASE_TIMEOUT, 'Database is running slow, try again', 'Database timed out : ' . $sqlParts[0], true);
+					dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
 					exit();
 				}
 			} else {
-				SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, 'DART : DeliveryComplete : New Invoice Serious');
-				dartLoggingHour($currentScript, "    Database error, see " . DART_ERROR_LOG, $codeStr);
-				$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
-				echo $badXML;
+				SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, "DART : $currentScript Serious");
+				sendError(500, ERROR_CODES::ERROR_DATABASE, 'Database is down', 'Database error, see ' . DART_ERROR_LOG . ' log', false);
+				dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
 				exit();
 			}
 		}
@@ -815,8 +773,5 @@ if ($signerID != PRINTED_INVOICE_ID) {
 	}
 }
 
-echo $successXML;
+sendResult();
 dartLoggingHour($currentScript, "  Success : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'], $codeStr);
-
-// error_log("$currentScript : $codeStr : END");
-exit();

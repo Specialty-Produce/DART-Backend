@@ -2,7 +2,7 @@
 include_once 'global_CDC.php';
 include_once 'classes_SP/class_DART.php';
 include_once 'classes_SP/class_ADPWFN_SP.php';
-require_once 'classes_SP/class_Voxox_SP.php';
+require_once 'classes_SP/class_TwilioSMS.php';
 include '../../dart_init.php';
 
 $currentScript = basename($_SERVER["SCRIPT_NAME"]);

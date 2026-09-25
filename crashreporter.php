@@ -1,92 +1,73 @@
 <?php
 include_once 'global_CDC.php';
 include 'dart_init.php';
-$currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
-
-$tempDir = "C:/PHP/temp/";
+$currentScript = basename($_SERVER["SCRIPT_NAME"]);
+$sendObj->webservice = $currentScript;
 
 // Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
-$codeStr = generateRandomCode ( 6 );
+$codeStr = generateRandomCode(6);
 
-// On various errors and failures, we'll use the status BAD update XML
-$badXML = <<< EOT
-<?xml version="1.0"?>
-<crashreporter status="failed" errmsg="XXX">
-</crashreporter>
-EOT;
+dartLogging($currentScript, "post=" . print_r($_POST, true), $codeStr);
 
-$successXML = <<< EOT
-<?xml version="1.0"?>
-<crashreporter status="success">
-</crashreporter>
-EOT;
-
-dartLogging ( $currentScript, "post=" . print_r($_POST, true), $codeStr );
-
-// Get the POST data
 // iPad Name
-$ipadname = filter_input ( INPUT_POST, 'ipadname', FILTER_SANITIZE_STRING );
-if ($ipadname == FALSE || is_null ( $ipadname )) {
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid iPad name', $badXML );
-	echo $badXML;
-	exit ();
+$ipadname = filter_input(INPUT_POST, 'ipadname');
+if ($ipadname == FALSE || is_null($ipadname)) {
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No ipadname supplied', 'No ipadname supplied in POST request');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
+	exit();
 }
 
 // Timestamp
-$crashtimestamp = filter_input ( INPUT_POST, 'crashtimestamp', FILTER_SANITIZE_STRING );
-if ($crashtimestamp == FALSE || is_null ( $crashtimestamp )) {
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid crash timestamp', $badXML );
-	echo $badXML;
-	exit ();
+$crashtimestamp = filter_input(INPUT_POST, 'crashtimestamp');
+if ($crashtimestamp == FALSE || is_null($crashtimestamp)) {
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No crashtimestamp supplied', 'No crashtimestamp supplied in POST request');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
+	exit();
 }
 
 // Crash Log Name
-$crashlogname = filter_input ( INPUT_POST, 'crashlogname', FILTER_SANITIZE_STRING );
-if ($crashlogname == FALSE || is_null ( $crashlogname )) {
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Invalid crash log name', $badXML );
-	echo $badXML;
-	exit ();
+$crashlogname = filter_input(INPUT_POST, 'crashlogname');
+if ($crashlogname == FALSE || is_null($crashlogname)) {
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No crashlogname supplied', 'No crashlogname supplied in POST request');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
+	exit();
 }
 
 // Encoded Crash Log
-if (isset ( $_POST ['crashlog'] )) {
-	$encodedCrashLog = $_POST ['crashlog'];
+if (isset($_POST['crashlog'])) {
+	$encodedCrashLog = $_POST['crashlog'];
 } else {
 	$encodedCrashLog = false;
 }
-if ($encodedCrashLog == FALSE || is_null ( $encodedCrashLog )) {
-	dartLogging ( $currentScript, "    \$encodedCrashLog is FALSE or NULL : " . $_SERVER ['REMOTE_ADDR'] . " : " . $_SERVER ['HTTP_USER_AGENT'], $codeStr );
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : No encoded crash log supplied', $badXML );
-	echo $badXML;
-	exit ();
+if ($encodedCrashLog == FALSE || is_null($encodedCrashLog)) {
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No crashlog supplied', 'No crashlog supplied in POST request');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
+	exit();
 }
 
-// Setup email
-// Mailer
+// Mail
 require_once 'classes_SP/class_PHPMailerSP.php';
-$mail = new PHPMailerSP ();
-$mail->setApiKey ( 'acct' );
+$mail = new PHPMailerSP();
+$mail->setApiKey('acct');
 $mail->FromName = "Specialty Produce DART";
 $mail->From = "itadmin@specialtyproduce.com";
-$mail->AddAddress ( "terry.ace.sp2@gmail.com", "Terry Grossman" );
-$mail->AddCC ( "christopher@specialtyproduce.com", "Christopher Cilley" );
+$mail->AddAddress("terry.ace.sp2@gmail.com", "Terry Grossman");
+$mail->AddCC("christopher@specialtyproduce.com", "Christopher Cilley");
 $mail->Body = "Crash report attached.";
 
 // Work through each crash log
-$filename = $tempDir . $crashlogname;
-if (file_put_contents ( $filename, $encodedCrashLog ) === false) {
-	dartLogging ( $currentScript, "Error writing out binary crash log to $tempDir", $codeStr );
+$filename = SPConsts::TempDir . $crashlogname;
+if (file_put_contents($filename, $encodedCrashLog) === false) {
+	dartLogging($currentScript, "Error writing out binary crash log to " . SPConsts::TempDir, $codeStr);
 	continue;
 }
 $mail->Subject = "Crash : $ipadname  : $crashtimestamp";
-$mail->AddAttachment ( $filename, $crashlogname );
-if (! $mail->Send ()) {
-	dartLogging ( $currentScript, "Error sending crash report", $codeStr );
+$mail->AddAttachment($filename, $crashlogname);
+if (! $mail->Send()) {
+	dartLogging($currentScript, "Error sending crash report", $codeStr);
 }
-$mail->ClearAttachments ();
-unlink ( $filename );
+$mail->ClearAttachments();
+unlink($filename);
 
-echo $successXML;
-dartLogging ( $currentScript, "  Success : " . $_SERVER ['REMOTE_ADDR'] . " : " . $_SERVER ['HTTP_USER_AGENT'], $codeStr );
-exit ();
-?>
+sendResult();
+dartLogging($currentScript, "  Success", $codeStr);

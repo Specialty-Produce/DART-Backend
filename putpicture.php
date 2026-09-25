@@ -4,59 +4,32 @@ include_once 'classes_SP/class_DART.php';
 include_once 'classes_SP/class_AzureBlobSP.php';
 include 'dart_init.php';
 $currentScript = basename($_SERVER["SCRIPT_NAME"]);
-
-// On various errors and failures, we'll use the status BAD update XML
-$badXML = <<< EOT
-<?xml version="1.0"?>
-<putpicture status="failed" code="0" retry="true" errmsg="XXX">
-</putpicture>
-EOT;
-
-$successXML = <<< EOT
-<?xml version="1.0"?>
-<putpicture status="success">
-</putpicture>
-EOT;
+$sendObj->webservice = $currentScript;
 
 // Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
 $codeStr = generateRandomCode(6);
 
-// TODO : CRC check
-// jsonCRC32
-
 // Get the POST data
 if (isset($_POST['jsondata'])) {
 	$appJSON = $_POST['jsondata'];
-	// dartLogging ( $currentScript, "jsondata=" . (preg_replace ( '/(,"signatureimage":")[^"]+(","status")/', '$1 --- $2', $appJSON )), $codeStr );
-	// dartLogging ( $currentScript, "jsondata=" . $appJSON, $codeStr );
-	// dartLogging ( $currentScript, "POST=" . print_r($_POST, true), $codeStr );
 	dartLogging($currentScript, "Starting...\n" . $_POST['jsondata'], $codeStr);
 } else {
-	$appJSON = false;
-}
-
-if (MAINTENANCE_MODE) {
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Maintenace Mode', $badXML);
-	// $badXML = preg_replace ( '/retry="true"/', 'retry="false"', $badXML );
-	echo $badXML;
-	dartLogging($currentScript, " in Maintenace Mode", $codeStr);
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No jsondata supplied', 'No jsondata supplied in POST request');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
 	exit();
 }
 
-// appJSON
-if ($appJSON == FALSE || is_null($appJSON)) {
-	dartLogging($currentScript, "    jsondata is FALSE or NULL : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'], $codeStr);
-	$badXML = preg_replace('/XXX/', $currentScript . ' : No jsondata supplied', $badXML);
-	echo $badXML;
+if (MAINTENANCE_MODE) {
+	sendError(503, ERROR_CODES::ERROR_MAINTENANCE_MODE, 'Site undergoing maintenance. Please try again.', 'Maintenance Mode is ON', true);
+	dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
 	exit();
 }
 
 // Good to go...
 $jd = json_decode($appJSON);
 if ($jd == FALSE || is_null($jd)) {
-	dartLogging($currentScript, "    decoded jsondata is FALSE or NULL : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'], $codeStr);
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid jsondata supplied', $badXML);
-	echo $badXML;
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'Bad JSON data', 'Decoded jsondata is FALSE or NULL');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
 	SP_ErrorLogging("Decoded JSON data is invalid for codeStr = $codeStr. Hand fix and adhoc enter data", true, DART_ERROR_LOG, "DART - $currentScript - Invalid JSON data");
 	exit();
 }
@@ -69,9 +42,8 @@ $filePath = SPConsts::TempDir . $fileName;
 if (!$imgSrc = imagecreatefromstring(base64_decode($jd->productimage))) {
 	$errMsg = "Could not create image from productimage data, lineitemid = " . $jd->lineitemid . ", code = " . $codeStr;
 	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
-	dartLogging($currentScript, "    Could not create image from productimage data", $codeStr);
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Could not create image from productimage data', $badXML);
-	echo $badXML;
+	sendError(500, ERROR_CODES::ERROR_INVALID_DATA, 'Error saving item image.', $errMsg, true);
+	dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
 	exit();
 }
 $width = imagesx($imgSrc);
@@ -79,17 +51,15 @@ $height = imagesy($imgSrc);
 
 // Make the new image
 if (!$imgDest = imagecreatetruecolor($width, $height)) {
-	dartLogging($currentScript, "    Could not create new true color image", $codeStr);
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Could not create new true color image', $badXML);
-	echo $badXML;
+	sendError(500, ERROR_CODES::ERROR_INVALID_DATA, 'Error saving item image.', "Could not create new true color image.", true);
+	dartLogging($sendObj->webservice, $json_encode($sendObj), $codeStr);
 	exit();
 }
 
 // Copy sent into new
 if (!imagecopy($imgDest, $imgSrc, 0, 0, 0, 0, $width, $height)) {
-	dartLogging($currentScript, "    Could not copy source image to new image", $codeStr);
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Could not copy source image to new image', $badXML);
-	echo $badXML;
+	sendError(500, ERROR_CODES::ERROR_INVALID_DATA, 'Error saving item image.', "Could not copy source image to new image.", true);
+	dartLogging($sendObj->webservice, $json_encode($sendObj), $codeStr);
 	exit();
 }
 
@@ -103,17 +73,18 @@ try {
 	} else {
 		$errMsg = "Invalid pictype : " . $jd->pictype . ", code = " . $codeStr;
 		SP_ErrorLogging($errMsg, true, DART_ERROR_LOG);
-		dartLogging($currentScript, "    Invalid pic type", $codeStr);
-		$badXML = preg_replace('/XXX/', $currentScript . ' : Invalid pic type', $badXML);
-		echo $badXML;
+		sendError(500, ERROR_CODES::ERROR_INVALID_DATA, 'Invalid picture type.', "$errMsg", true);
+		dartLogging($sendObj->webservice, $json_encode($sendObj), $codeStr);
 		exit();
 	}
 	unlink($filePath);
 } catch (SP_Exception $e) {
 	$errMsg = $e->getMessage();
-	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, 'DART Sig Error');
+	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, 'Delivery Picture Upload Error');
+	sendError(500, ERROR_CODES::ERROR_INVALID_DATA, 'Error saving delivery image to Azure.', "Could not save delivery image to Azure.", true);
+	dartLogging($sendObj->webservice, $json_encode($sendObj), $codeStr);
+	exit();
 }
 
-echo $successXML;
-dartLogging($currentScript, "  Success : " . $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'], $codeStr);
-exit();
+sendResult();
+dartLogging($currentScript, "  Success", $codeStr);

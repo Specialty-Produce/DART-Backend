@@ -4,41 +4,38 @@ include_once 'classes_SP/class_ADPWFN_SP.php';
 require_once 'classes_SP/class_PHPMailerSP.php';
 include 'dart_init.php';
 $currentScript = basename($_SERVER["SCRIPT_NAME"]);
+$sendObj->webservice = $currentScript;
 
-// On various errors and failures, we'll use the status BAD update XML
-$badXML = <<< EOT
-<?xml version="1.0"?>
-<putpunchin status="failed" code="0" retry="false" errmsg="XXX">
-</putpunchin>
-EOT;
+// Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
+$codeStr = generateRandomCode(6);
 
 $postData = '';
 foreach ($_POST as $key => $val) {
     $postData .= $key . "=>" . $val . ", ";
 }
-dartLogging($currentScript, "postdata=" . $postData);
+dartLogging($currentScript, "postdata=" . $postData, $codeStr);
 
 // User ID
 $userid = filter_input(INPUT_POST, 'userid', FILTER_SANITIZE_NUMBER_INT);
 if ($userid == FALSE || is_null($userid)) {
-    $badXML = preg_replace('/XXX/', $currentScript . ' : Invalid User ID', $badXML);
-    echo $badXML;
+    sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No userid supplied', 'No userid supplied in POST request');
+    dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
     exit();
 }
 
 // Punch Time
-$punchtime = filter_input(INPUT_POST, 'punchtime', FILTER_SANITIZE_STRING);
+$punchtime = filter_input(INPUT_POST, 'punchtime');
 if ($punchtime == FALSE || is_null($punchtime)) {
-    $badXML = preg_replace('/XXX/', $currentScript . ' : Invalid Punch Time', $badXML);
-    echo $badXML;
+    sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No punchtime supplied', 'No punchtime supplied in POST request');
+    dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
     exit();
 }
 
 // Response : 1 = "I punched in at the wall clock", 0 = "Submitting punch here."
 $response = filter_input(INPUT_POST, 'response', FILTER_VALIDATE_INT);
 if ($response == FALSE || is_null($response) || ($response != 1 && $response != 0)) {
-    $badXML = preg_replace('/XXX/', $currentScript . ' : Invalid Response', $badXML);
-    echo $badXML;
+    sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No response supplied', 'No response supplied in POST request');
+    dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
     exit();
 }
 // $userid = 635;
@@ -128,33 +125,26 @@ while ($sqlFailed) {
         $errMsg = "SQL = $sql\n";
         $eMessage = $e->getMessage();
         $errMsg .= $e->getFile() . ' (' . $e->getLine() . ')' . " sqlAttemptCount=$sqlAttemptCount : " . $eMessage;
-        $errMsg .= "\n\n\$sqlAttemptCount = $sqlAttemptCount";
-        if (preg_match('/Timeout expired/', $eMessage) || preg_match('/SQL Server does not exist or access denied/', $eMessage) || preg_match('/deadlock victim/', $eMessage) || preg_match('/Schema changed/', $eMessage)) {
-            SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, 'DART : CancelledBySP Retry');
+        $errMsg .= "\n\ncodeStr = $codeStr\n";
+        if (preg_match('/Timeout expired/', $eMessage) || preg_match('/SQL Server does not exist or access denied/', $eMessage) || preg_match('/deadlock victim/', $eMessage)) {
+            $sqlParts = explode(' ', $sql);
             if ($sqlAttemptCount < DART_SQL_TIMEOUT_MAX_TRIES) {
                 $sqlAttemptCount++;
                 $sqlFailed = true;
                 sleep(DART_SQL_TIMEOUT_SLEEP);
             } else {
-                $badXML = preg_replace('/XXX/', $currentScript . ' : Database timeout, see ' . DART_ERROR_LOG . ' log', $badXML);
-                $badXML = preg_replace('/code="0"/', 'code="1"', $badXML);
-                echo $badXML;
+                sendError(504, ERROR_CODES::ERROR_DATABASE_TIMEOUT, 'Database is running slow, try again', 'Database timed out : ' . $sqlParts[0], false);
+                dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
                 exit();
             }
         } else {
-            SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, 'DART : Punch In Serious');
-            $badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
-            echo $badXML;
+            SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, "DART : $currentScript Serious");
+            sendError(500, ERROR_CODES::ERROR_DATABASE, 'Database is down', 'Database error, see ' . DART_ERROR_LOG . ' log', false);
+            dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
             exit();
         }
     }
 }
 
-// Generate the XML
-$resultStr = <<< EOT
-<?xml version="1.0"?>
-<putpunchin status="success">
-</putpunchin>
-EOT;
-echo $resultStr;
-exit();
+sendResult();
+dartLogging($currentScript, "  Success", $codeStr);

@@ -1,113 +1,96 @@
 <?php
 include_once 'global_CDC.php';
 include 'dart_init.php';
-require ('classes_SP/class_PackSlipPDF.php');
-$currentScript = basename ( $_SERVER ["SCRIPT_NAME"] );
+require('classes_SP/class_PackSlipPDF.php');
+$currentScript = basename($_SERVER["SCRIPT_NAME"]);
+$sendObj->webservice = $currentScript;
 
-// On various errors and failures, we'll use the status BAD update XML
-$badXML = <<< EOT
-<?xml version="1.0"?>
-<printdriverpaperwork status="failed" code="0" retry="true" errmsg="XXX">
-</printdriverpaperwork>
-EOT;
-
-// Success
-$successXML = <<< EOT
-<?xml version="1.0"?>
-<printdriverpaperwork status="success">
-</printdriverpaperwork>
-EOT;
+// Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
+$codeStr = generateRandomCode(6);
 
 // Get the POST data
-$appJSON = $_POST ['jsondata'];
-dartLogging ( $currentScript, "jsondata=" . $appJSON );
+$appJSON = $_POST['jsondata'];
+dartLogging($currentScript, "jsondata=" . $appJSON, $codeStr);
 
 // appJSON
-if ($appJSON == FALSE || is_null ( $appJSON )) {
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : No jsondata supplied', $badXML );
-	echo $badXML;
-	exit ();
+if ($appJSON == FALSE || is_null($appJSON)) {
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No jsondata supplied', 'No jsondata supplied in POST request');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
+	exit();
 }
-$jd = json_decode ( $appJSON );
+$jd = json_decode($appJSON);
 
 // UserID
-$userid = filter_var ( $jd->userid, FILTER_SANITIZE_NUMBER_INT );
-if (($userid == FALSE || is_null ( $userid ))) {
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : No userid', $badXML );
-	echo $badXML;
-	exit ();
+$userid = filter_var($jd->userid, FILTER_SANITIZE_NUMBER_INT);
+if (($userid == FALSE || is_null($userid))) {
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No userid supplied', 'No userid supplied in jsondata');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
+	exit();
 }
 
 // If Debug, just send success
 if ($userid == DEBUG_USERID) {
-	echo $successXML;
-	exit ();
+	sendResult();
+	exit();
 }
 
 // Dart Session ID
-$dartSession = filter_var ( $jd->dartsessionid, FILTER_SANITIZE_NUMBER_INT );
-if (($dartSession == FALSE || is_null ( $dartSession ))) {
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : No Dart session ID', $badXML );
-	echo $badXML;
-	exit ();
+$dartSession = filter_var($jd->dartsessionid, FILTER_SANITIZE_NUMBER_INT);
+if (($dartSession == FALSE || is_null($dartSession))) {
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No dartsessionid supplied', 'No dartsessionid supplied in jsondata');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
+	exit();
 }
 // Deliveries list
-if ($jd->deliveryjson == FALSE || is_null ( $jd->deliveryjson )) {
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : No location list data', $badXML );
-	echo $badXML;
-	exit ();
+if ($jd->deliveryjson == FALSE || is_null($jd->deliveryjson)) {
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No deliveryjson supplied', 'No deliveryjson supplied in jsondata');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
+	exit();
 }
 
-try {
-	$dbh = new PDO ( 'spdb', '', '' );
-	$dbh->setAttribute ( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-	
-	$sortVal = 1;
-	$locXML = "<ROOT>\n";
-	foreach ( $jd->deliveryjson as $entry ) {
-		if ($entry->status <= 5) {
-			$locXML .= '<Rec LID="' . $entry->locationid . '" iSortID="' . $sortVal . '"/>' . "\n";
-			$sortVal ++;
+$sqlFailed = true;
+$sqlAttemptCount = 1;
+$sql = '';
+while ($sqlFailed) {
+	$sqlFailed = false;
+	try {
+		$dbh = new PDO('spdb', '', '');
+		$dbh->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+		$sortVal = 1;
+		$locXML = "<ROOT>\n";
+		foreach ($jd->deliveryjson as $entry) {
+			if ($entry->status <= 5) {
+				$locXML .= '<Rec LID="' . $entry->locationid . '" iSortID="' . $sortVal . '"/>' . "\n";
+				$sortVal++;
+			}
+		}
+		$locXML .= "</ROOT>";
+		$result = $dbh->exec("uspDARTDelivery " . $userid . ", '" . $locXML . "'");
+
+		$dbh = null;
+	} catch (PDOException $e) {
+		$errMsg = $e->getFile() . ' (' . $e->getLine() . ')' . $e->getMessage();
+		$errMsg .= "\n\ncodeStr = $codeStr\n";
+		if (preg_match('/Timeout expired/', $eMessage) || preg_match('/SQL Server does not exist or access denied/', $eMessage) || preg_match('/deadlock victim/', $eMessage)) {
+			$sqlParts = explode(' ', $sql);
+			if ($sqlAttemptCount < DART_SQL_TIMEOUT_MAX_TRIES) {
+				$sqlAttemptCount++;
+				$sqlFailed = true;
+				sleep(DART_SQL_TIMEOUT_SLEEP);
+			} else {
+				sendError(504, ERROR_CODES::ERROR_DATABASE_TIMEOUT, 'Database is running slow, try again', 'Database timed out : ' . $sqlParts[0], true);
+				dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
+				exit();
+			}
+		} else {
+			SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, "DART : $currentScript Serious");
+			sendError(500, ERROR_CODES::ERROR_DATABASE, 'Database is down', 'Database error, see ' . DART_ERROR_LOG . ' log', false);
+			dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
+			exit();
 		}
 	}
-	$locXML .= "</ROOT>";
-	$result = $dbh->exec ( "uspDARTDelivery " . $userid . ", '" . $locXML . "'" );
-	
-	$dbh = null;
-} catch ( PDOException $e ) {
-	$errMsg = $e->getFile () . ' (' . $e->getLine () . ')' . $e->getMessage ();
-	SP_ErrorLogging ( $errMsg, true, DART_ERROR_LOG );
-	$badXML = preg_replace ( '/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML );
-	echo $badXML;
-	exit ();
 }
 
-echo $successXML;
-exit ();
-
-/*
-$pdf=new PackSlipPDF();
-$pdf->AddPage();
-$pdf->SetFont('Arial','',12);
-$txt="FPDF is a PHP class which allows to generate PDF files with pure PHP, that is to say ".
-	"without using the PDFlib library. F from FPDF stands for Free: you may use it for any ".
-	"kind of usage and modify it to suit your needs.\n\n";
-for($i=0;$i<25;$i++) 
-	$pdf->MultiCell(0,5,$txt,0,'J');
-// Output the PDF
-$outFile = DART_PDF_DIR . "foo.pdf";
-$outFile = 'C:\Temp\invoicePDFs\foo.pdf';
-$pdf->Output ( $outFile, 'F' );
-$pdf = null;
-*/
-
-// Print the PDF
-$pdfPath = 'C:\Temp\invoicePDFs\\';
-$outFile = '';
-// WORKS from command line : exec("acrowrap /t C:\\Temp\\invoicePDFs\\1474964.pdf \\\\vServices\\Apricot");
-pclose ( popen ( "start /B acrowrap /t C:\\Temp\\abc.pdf \\\\vServices\\Apricot", "r" ) );
-//exec("acrowrap /t C:\\Temp\\abc.pdf \\\\vServices\\Apricot");
-// DOES NOT WORK from command line : exec('acrowrap /t C:\Temp\invoicePDFs\1474964.pdf \\vServices\Apricot');
-echo "done";
-exit();
-?>
+sendResult();
+dartLogging($sendObj->webservice, "  Success", $codeStr);

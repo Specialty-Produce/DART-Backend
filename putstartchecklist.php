@@ -3,25 +3,19 @@ include_once 'global_CDC.php';
 include_once 'classes_SP/class_Samsara_SP.php';
 include 'dart_init.php';
 $currentScript = basename($_SERVER["SCRIPT_NAME"]);
+$sendObj->webservice = $currentScript;
 
-// On various errors and failures, we'll use the status BAD update XML
-$badXML = <<< EOT
-<?xml version="1.0"?>
-<putstartchecklist status="failed" code="0" retry="true" errmsg="XXX">
-</putstartchecklist>
-EOT;
+// Since we can have multiple connections writing to the log file, we'll add a random code to log file entries.
+$codeStr = generateRandomCode(6);
 
 // Get the POST data
 $appJSON = $_POST['jsondata'];
-dartLogging($currentScript, "jsondata=" . $appJSON);
-
-//$appJSON='{"userid":"637","dartsessionid":"1194","cljson":"{\"truck\":\"22:0:1\",\"odometer\":\"1\",\"test_items\":[\"gauges_fuel\"],\"comments\":\"Need%20oil%20chance.\"}"}';
-
+dartLogging($currentScript, "jsondata=" . $appJSON, $codeStr);
 
 // appJSON
 if ($appJSON == FALSE || is_null($appJSON)) {
-	$badXML = preg_replace('/XXX/', $currentScript . ' : No jsondata supplied', $badXML);
-	echo $badXML;
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No jsondata supplied', 'No jsondata supplied in POST request');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
 	exit();
 }
 
@@ -29,23 +23,23 @@ $jd = json_decode($appJSON);
 // userid
 $userid = filter_var($jd->userid, FILTER_SANITIZE_NUMBER_INT);
 if ($userid == FALSE || is_null($userid)) {
-	$badXML = preg_replace('/XXX/', $currentScript . ' : No userid', $badXML);
-	echo $badXML;
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No userid supplied', 'No userid supplied in jsondata');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
 	exit();
 }
 // Dart Session ID
 $dartSession = filter_var($jd->dartsessionid, FILTER_SANITIZE_NUMBER_INT);
 if ($dartSession == FALSE || is_null($dartSession)) {
-	$badXML = preg_replace('/XXX/', $currentScript . ' : No Dart session ID', $badXML);
-	echo $badXML;
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No dartsessionid supplied', 'No dartsessionid supplied in jsondata');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
 	exit();
 }
 
 // checklistJSON
 $checklistJSON = $jd->cljson;
 if ($checklistJSON == FALSE || is_null($checklistJSON)) {
-	$badXML = preg_replace('/XXX/', $currentScript . ' : No checklist data', $badXML);
-	echo $badXML;
+	sendError(400, ERROR_CODES::ERROR_INVALID_DATA, 'No checklist json supplied', 'No cljson supplied in jsondata');
+	dartLogging($sendObj->webservice, $_SERVER['REMOTE_ADDR'] . " : " . $_SERVER['HTTP_USER_AGENT'] . ' : ' . json_encode($sendObj), $codeStr);
 	exit();
 }
 $clInfo = json_decode($checklistJSON);
@@ -87,9 +81,10 @@ try {
 	$dbh = null;
 } catch (PDOException $e) {
 	$errMsg = $e->getFile() . ' (' . $e->getLine() . ')' . $e->getMessage();
-	SP_errorLogging($errMsg, true, DART_ERROR_LOG);
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
-	echo $badXML;
+	$errMsg .= "sqlcl = " . $sqlcl;
+	SP_ErrorLogging($errMsg, true, DART_ERROR_LOG, "DART : $currentScript Serious");
+	sendError(500, ERROR_CODES::ERROR_DATABASE, 'Database is down', 'Database error, see ' . DART_ERROR_LOG . ' log', true);
+	dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
 	exit();
 }
 
@@ -109,16 +104,11 @@ if (!isset($dataresult['Identity']) || $clresult != $itemCount) {
 	$errMsg = "$currentScript failed on : (! isset ( \$dataresult ['Identity'] ) || clresult ($clresult) !=  itemCount ($itemCount)\n";
 	$errMsg .= "sqlds = $sqlds\nsqlcl = $sqlcl";
 	SP_errorLogging($errMsg, true, DART_ERROR_LOG);
-	$badXML = preg_replace('/XXX/', $currentScript . ' : Database error, see ' . DART_ERROR_LOG . ' log', $badXML);
-	echo $badXML;
+	sendError(500, ERROR_CODES::ERROR_DATABASE, 'Database is down', 'Database error, see ' . DART_ERROR_LOG . ' log');
+	dartLogging($sendObj->webservice, json_encode($sendObj), $codeStr);
 	exit();
 }
 
-$resultXML = <<< EOT
-<?xml version="1.0"?>
-<putstartchecklist status="success">
-EOT;
-$resultXML .= "<truckid>" . $clInfo->truck . "</truckid>\n";
-$resultXML .= "</putstartchecklist>\n";
-echo $resultXML;
-exit();
+$sendObj->data->truckid = $clInfo->truck;
+sendResult();
+dartLogging($currentScript, "  Success", $codeStr);
